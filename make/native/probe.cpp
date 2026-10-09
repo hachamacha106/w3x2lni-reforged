@@ -80,6 +80,11 @@ static bool smoke_archive(const std::string& dir, DWORD sector) {
     check_member(archive, "data\\sample.bin", bytes);
     check_member(archive, "empty.bin", "");
     check_member(archive, unicode_name, "opaque import");
+    DWORD checksum = 0;
+    char md5[16] = {};
+    require(SFileGetFileChecksums(archive, "data\\sample.bin", &checksum, md5) &&
+        checksum == crc32(0, (const Bytef*)bytes.data(), (uInt)bytes.size()),
+        "SFileGetFileChecksums ABI/checksum mismatch");
     require(SFileCloseArchive(archive), "SFileCloseArchive(read)");
     // Keep probe artifacts for diagnostics; their fresh directory is controlled by Python.
     return true;
@@ -122,7 +127,7 @@ static void compression_probe() {
     X(SFileGetFileChecksums) \
     X(SFileVerifyFile)
 #define FIELD(type, name) std::cout << "\"" #name "\":" << offsetof(type, name)
-#define CONST(name) std::cout << "\"" #name "\":" << (unsigned long long)(name)
+#define W2L_ABI_CONSTANT(name) std::cout << "\"" #name "\":" << (unsigned long long)(name)
 static int run_probe(const std::string& directory) {
     try {
         require(std::strcmp(STORMLIB_VERSION_STRING, "9.40") == 0, "Wrong StormLib header");
@@ -132,6 +137,14 @@ static int run_probe(const std::string& directory) {
         const void* volatile exports[] = { ARCHIVE_EXPORTS(EXPORT_ADDRESS) };
 #undef EXPORT_ADDRESS
         for (const auto& entry : exports) require(entry != NULL, "Missing exports");
+#ifdef _WIN32
+        // Lua resolves plain names dynamically; import-library linking is insufficient.
+        HMODULE module = GetModuleHandleW(L"StormLib.dll");
+        require(module != NULL, "Rebuilt StormLib module not loaded");
+#define EXPORT_LOOKUP(name) require(GetProcAddress(module, #name) != NULL, "Missing DLL export: " #name);
+        ARCHIVE_EXPORTS(EXPORT_LOOKUP)
+#undef EXPORT_LOOKUP
+#endif
         compression_probe();
         require(!smoke_archive(directory, 512), "512-byte sectors unexpectedly supported");
         require(smoke_archive(directory, 4096) && smoke_archive(directory, 65536), "Supported-sector roundtrip failed");
@@ -163,15 +176,15 @@ static int run_probe(const std::string& directory) {
         FIELD(SFILE_FIND_DATA, dwFileTimeLo); std::cout << ',';
         FIELD(SFILE_FIND_DATA, dwFileTimeHi); std::cout << ',';
         FIELD(SFILE_FIND_DATA, lcLocale); std::cout << "}},\"constants\":{";
-        CONST(SFileMpqHeaderOffset); std::cout << ','; CONST(SFileMpqArchiveSize64); std::cout << ',';
-        CONST(SFileMpqNumberOfFiles); std::cout << ','; CONST(SFileMpqSectorSize); std::cout << ',';
-        CONST(SFileMpqFlags); std::cout << ','; CONST(SFileInfoLocale); std::cout << ',';
-        CONST(SFileInfoFileIndex); std::cout << ','; CONST(SFileInfoByteOffset); std::cout << ',';
-        CONST(SFileInfoFileTime); std::cout << ','; CONST(SFileInfoFileSize); std::cout << ',';
-        CONST(SFileInfoCompressedSize); std::cout << ','; CONST(SFileInfoFlags); std::cout << ',';
-        CONST(MPQ_FLAG_WAR3_MAP); std::cout << ','; CONST(MPQ_FLAG_MALFORMED); std::cout << ',';
-        CONST(MPQ_FILE_COMPRESS); std::cout << ','; CONST(MPQ_FILE_ENCRYPTED); std::cout << ',';
-        CONST(MPQ_FILE_KEY_V2); std::cout << ','; CONST(MPQ_COMPRESSION_ZLIB);
+        W2L_ABI_CONSTANT(SFileMpqHeaderOffset); std::cout << ','; W2L_ABI_CONSTANT(SFileMpqArchiveSize64); std::cout << ',';
+        W2L_ABI_CONSTANT(SFileMpqNumberOfFiles); std::cout << ','; W2L_ABI_CONSTANT(SFileMpqSectorSize); std::cout << ',';
+        W2L_ABI_CONSTANT(SFileMpqFlags); std::cout << ','; W2L_ABI_CONSTANT(SFileInfoLocale); std::cout << ',';
+        W2L_ABI_CONSTANT(SFileInfoFileIndex); std::cout << ','; W2L_ABI_CONSTANT(SFileInfoByteOffset); std::cout << ',';
+        W2L_ABI_CONSTANT(SFileInfoFileTime); std::cout << ','; W2L_ABI_CONSTANT(SFileInfoFileSize); std::cout << ',';
+        W2L_ABI_CONSTANT(SFileInfoCompressedSize); std::cout << ','; W2L_ABI_CONSTANT(SFileInfoFlags); std::cout << ',';
+        W2L_ABI_CONSTANT(MPQ_FLAG_WAR3_MAP); std::cout << ','; W2L_ABI_CONSTANT(MPQ_FLAG_MALFORMED); std::cout << ',';
+        W2L_ABI_CONSTANT(MPQ_FILE_COMPRESS); std::cout << ','; W2L_ABI_CONSTANT(MPQ_FILE_ENCRYPTED); std::cout << ',';
+        W2L_ABI_CONSTANT(MPQ_FILE_KEY_V2); std::cout << ','; W2L_ABI_CONSTANT(MPQ_COMPRESSION_ZLIB);
         std::cout << "},\"exports\":[";
         bool first_export = true;
 #define EXPORT_JSON(name) if (!first_export) std::cout << ','; std::cout << "\"" #name "\""; first_export = false;
