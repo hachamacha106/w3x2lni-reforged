@@ -60,11 +60,20 @@ git merge --ff-only release/reforged-1.0.0
 git push origin master
 ```
 
-If your default branch is `main`, substitute `main` in those commands. Check the
-**Reforged release checks** run for that branch. The workflow builds and validates
-an artifact on pushes to `master` / `main`, pull requests to those branches, and
-manual runs. A manual run validates the selected branch or tag; it does not
-create a release.
+If your default branch is `main`, substitute `main` in those commands. The
+**CI quick checks** workflow (`.github/workflows/ci.yml`) runs on pushes and pull
+requests to `main`, and can also be started manually. It checks repository
+identity, release metadata, Python syntax, and packaging safeguards.
+
+The **Reforged release checks** workflow (`.github/workflows/build.yml`) runs only
+when a `v*` tag is pushed or when started manually. It builds and verifies the
+portable package, runs all 14 compatibility suites on Linux, and runs the
+packaged CLI on Windows.
+
+Before tagging, open **Actions > Reforged release checks > Run workflow**, select
+`main`, and click **Run workflow**. A manual run validates the selected branch or
+tag and uploads artifacts; it does not create a release draft. A matching version
+tag creates a draft only after the Linux and Windows jobs both succeed.
 
 ## Create the 1.0 draft
 
