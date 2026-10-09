@@ -143,9 +143,24 @@ def source_snapshot(repo, allow_dirty=False):
     require(git(repo, 'merge-base', UPSTREAM_BASE, commit).decode().strip() == UPSTREAM_BASE,
             'Release HEAD does not descend from the pinned upstream base')
     status = clean_status(repo)
-    require(not status or allow_dirty,
+    if status and not allow_dirty:
+        # Name the runner-side mutation without discarding or admitting it.
+        entries = [json.dumps(entry.decode('utf-8', errors='backslashreplace'), ensure_ascii=False)
+                   for entry in status.split(b'\0') if entry]
+        details = '\nGit status entries (paths only):\n  ' + '\n  '.join(entries)
+        nested = subprocess.run(['git', 'submodule', 'foreach', '--recursive',
+                                 'git status --porcelain=v1 --untracked-files=all'],
+                                cwd=repo, capture_output=True)
+        if nested.returncode == 0 and nested.stdout:
+            # JSON quoting prevents control characters in filenames/log output.
+            lines = [json.dumps(line, ensure_ascii=False) for line in
+                     nested.stdout.decode('utf-8', errors='backslashreplace').splitlines()]
+            details += '\nRecursive submodule status:\n  ' + '\n  '.join(lines)
+        elif nested.returncode:
+            details += '\nRecursive submodule status could not be read.'
+        raise ValueError(
             'Release source must be clean and committed. Commit source changes and keep outputs in build/. '
-            'Use --allow-dirty only for a development candidate.')
+            'Use --allow-dirty only for a development candidate.' + details)
     tree = committed_tree
     if status:
         build = repo / 'build'
