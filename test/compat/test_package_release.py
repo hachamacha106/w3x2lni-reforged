@@ -7,9 +7,11 @@ results. The 14 converter suites are run separately against the real candidate.
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -94,6 +96,26 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertIn(b'-dirty', packager.generated_gitlog(source))
         with self.assertRaisesRegex(ValueError, 'dirty development candidate'):
             packager.validate_test_report({}, 'unused', source)
+
+    def test_source_snapshot_uses_blobs_despite_crlf_archive_and_checkout_attributes(self):
+        (self.repo / '.gitattributes').write_bytes(b'*.txt text eol=crlf\n')
+        text = self.repo / 'LICENSE.txt'
+        text.write_bytes(b'License line one\r\nLicense line two\r\n')
+        self.run_git('add', '.')
+        self.run_git('commit', '-qm', 'Source with CRLF checkout attributes')
+        committed = self.run_git('cat-file', 'blob', 'HEAD:LICENSE.txt')
+        self.assertEqual(committed, b'License line one\nLicense line two\n')
+        self.run_git('checkout-index', '--force', '--', 'LICENSE.txt')
+        self.assertEqual(text.read_bytes(), committed.replace(b'\n', b'\r\n'))
+        archive_bytes = self.run_git('archive', '--format=tar', 'HEAD')
+        with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode='r:') as archive:
+            archived = archive.extractfile('LICENSE.txt').read()
+        self.assertEqual(archived, text.read_bytes())
+        self.assertNotEqual(archived, committed, 'This fixture must expose git archive conversion')
+        source, files, patch, status = packager.source_snapshot(self.repo)
+        self.assertFalse(status)
+        self.assertFalse(source['dirty'])
+        self.assertEqual(files['LICENSE.txt'], committed)
 
     def test_archive_reproducible_and_changed_payload_rejected(self):
         root = 'w3x2lni-reforged-1.0.0'

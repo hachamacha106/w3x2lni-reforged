@@ -17,7 +17,6 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
-import tarfile
 import tempfile
 import zipfile
 
@@ -79,17 +78,40 @@ def index_environment(index):
 
 
 def tree_snapshot(repo, tree):
-    # Git object bytes, independent of checkout newline conversion and filters.
+    # Read blobs directly. git archive and checkout both apply attributes such
+    # as text/eol conversion, so neither provides the committed object bytes.
+    entries = []
+    names = set()
+    for record in git(repo, 'ls-tree', '-r', '-z', '--full-tree', tree).split(b'\0'):
+        if not record:
+            continue
+        attributes, raw_name = record.split(b'\t', 1)
+        mode, kind, object_id = attributes.decode().split()
+        name = raw_name.decode()
+        require(valid_member(name), 'Unsafe source path: ' + name)
+        require(name not in names, 'Duplicate source path: ' + name)
+        names.add(name)
+        if mode == '160000' and kind == 'commit':
+            continue
+        require(kind == 'blob' and mode in ('100644', '100755'),
+                'Release source contains a non-regular file: ' + name)
+        entries.append((name, object_id))
+    requests = ''.join(object_id + '\n' for _, object_id in entries).encode()
+    blobs = git(repo, 'cat-file', '--batch', input=requests)
     contents = {}
-    archive_bytes = git(repo, 'archive', '--format=tar', tree)
-    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode='r:') as archive:
-        for item in archive:
-            if item.isdir():
-                continue
-            require(item.isfile(), 'Release source contains a non-regular file: ' + item.name)
-            require(valid_member(item.name), 'Unsafe source path: ' + item.name)
-            require(item.name not in contents, 'Duplicate source path: ' + item.name)
-            contents[item.name] = archive.extractfile(item).read()
+    offset = 0
+    for name, expected_object_id in entries:
+        end = blobs.index(b'\n', offset)
+        object_id, kind, size = blobs[offset:end].split()
+        require(object_id.decode() == expected_object_id and kind == b'blob',
+                'Unexpected Git object for source path: ' + name)
+        start, length = end + 1, int(size)
+        require(length >= 0 and start + length < len(blobs)
+                and blobs[start + length:start + length + 1] == b'\n',
+                'Truncated Git source blob: ' + name)
+        contents[name] = blobs[start:start + length]
+        offset = start + length + 1
+    require(offset == len(blobs), 'Unexpected trailing Git source blob data')
     return contents
 
 
