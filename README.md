@@ -7,9 +7,9 @@ data, and optimized SLK maps. W3x2lni Reforged keeps the original GUI and comman
 line workflows, adds support for current map formats and game data, and improves
 conversion reports.
 
-[Downloads](https://github.com/hachamacha106/w3x2lni-Reforged/releases)
-· [Report a bug](https://github.com/hachamacha106/w3x2lni-Reforged/issues)
-· [Release checks](https://github.com/hachamacha106/w3x2lni-Reforged/actions)
+[Downloads](https://github.com/hachamacha106/w3x2lni-reforged/releases)
+· [Report a bug](https://github.com/hachamacha106/w3x2lni-reforged/issues)
+· [Release checks](https://github.com/hachamacha106/w3x2lni-reforged/actions)
 · [Changelog](CHANGELOG.md)
 
 ## Choose a format
@@ -25,7 +25,7 @@ editor-only information, which cannot be restored by converting the result back.
 
 ## Download and run
 
-1. Open [Releases](https://github.com/hachamacha106/w3x2lni-Reforged/releases) and
+1. Open [Releases](https://github.com/hachamacha106/w3x2lni-reforged/releases) and
    download the portable Windows package. For version 1.0, the asset is named
    **`w3x2lni-reforged-1.0.0-windows-x86.zip`**.
 2. Extract the entire ZIP into a new folder. Keep `bin`, `script`, and `data`
@@ -87,6 +87,11 @@ The 1.0 Windows package reuses the 22 native executables and DLLs from the
 official upstream **2.7.3** release. The updated converter and UI are delivered
 as Lua scripts. These are not newly compiled Windows binaries.
 
+## Maintaining this project
+
+New maintainer? Follow the [Codex + GitHub setup and release guide](MAINTAINER_GUIDE.md).
+It covers branching, CI checks, pinned submodules, version updates, and draft releases.
+
 ## Documentation
 
 - [Current Warcraft III support and game-data setup](docs/en-us/current-warcraft.md)
@@ -98,7 +103,7 @@ as Lua scripts. These are not newly compiled Windows binaries.
 
 ## Reporting a problem
 
-Open an [issue in this fork](https://github.com/hachamacha106/w3x2lni-Reforged/issues)
+Open an [issue in this fork](https://github.com/hachamacha106/w3x2lni-reforged/issues)
 with the application version, Warcraft III / editor build, conversion mode,
 steps to reproduce, and relevant settings. Attach the full conversion report
 from **Copy all** or `log/report.log`. For a crash, include the corresponding

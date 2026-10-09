@@ -1,7 +1,7 @@
 # Developer setup and the 1.0 release process
 
 This guide describes the source and release setup for
-[hachamacha106/w3x2lni-Reforged](https://github.com/hachamacha106/w3x2lni-Reforged).
+[hachamacha106/w3x2lni-Reforged](https://github.com/hachamacha106/w3x2lni-reforged).
 The product name is **W3x2lni Reforged**, the first release title is
 **W3x2lni Reforged 1.0**, its application version is **`1.0.0`**, and its tag is
 **`v1.0.0`**.
@@ -25,7 +25,7 @@ directory is **`w3x2lni-reforged-1.0.0`**. Keep the existing executable names:
 ## First-time fork setup
 
 On GitHub, open this fork's
-[Actions page](https://github.com/hachamacha106/w3x2lni-Reforged/actions). If
+[Actions page](https://github.com/hachamacha106/w3x2lni-reforged/actions). If
 GitHub asks you to enable workflows for the fork, enable them. The workflow is
 named **Reforged release checks**. It declares the permissions required by each
 job and uses GitHub's normal workflow token; no personal token is needed for
@@ -97,7 +97,7 @@ publish the draft automatically.
 ### Review and publish
 
 Open the draft under
-[Releases](https://github.com/hachamacha106/w3x2lni-Reforged/releases). Download
+[Releases](https://github.com/hachamacha106/w3x2lni-reforged/releases). Download
 its ZIP, extract it into a fresh directory on Windows, and confirm the application
 shows **W3x2lni Reforged 1.0.0**. Test the GUI, report resizing and clipboard, and
 representative maps in your World Editor and game. The automated Windows CLI
@@ -113,7 +113,7 @@ Use Python 3.10 or later, Git, GCC, G++, and curl on Linux. Clone the repository
 and initialize its pinned dependencies:
 
 ```sh
-git clone --recurse-submodules https://github.com/hachamacha106/w3x2lni-Reforged.git
+git clone --recurse-submodules https://github.com/hachamacha106/w3x2lni-reforged.git
 cd w3x2lni-Reforged
 git submodule update --init --recursive
 ```

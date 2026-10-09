@@ -196,7 +196,7 @@ The GitHub release workflow runs the packaged `w2l.exe` and native modules on
 Windows, checking OBJ, LNI, LNI-to-OBJ, and SLK conversions, report results, and
 rebuilt archive semantics. The separate `WINDOWS_SMOKE.json` release asset records
 that run. A configured test is not evidence of a successful run: consult the
-[workflow results](https://github.com/hachamacha106/w3x2lni-Reforged/actions) and
+[workflow results](https://github.com/hachamacha106/w3x2lni-reforged/actions) and
 that record for the release you use.
 
 The following remain practical acceptance checks:

@@ -11,3 +11,11 @@
 .vscode/.BROWSE.C_CPP.DB
 .vscode/.BROWSE.C_CPP.DB-wal
 .vscode/.BROWSE.C_CPP.DB-shm
+
+# Maintainer workspace / Python tooling
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+.DS_Store
