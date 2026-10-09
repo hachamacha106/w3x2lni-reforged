@@ -186,8 +186,8 @@ def validate_windows_report(path, archive_hash, expected_version=None, expected_
         for key in ('input_desktop_switched', 'interactive_dialog_tested', 'gui_rendering_tested'):
             assert native_dialog.get(key) is False, 'Isolated Save As checks cannot claim ' + key
         for key in ('isolated_desktop', 'owner_error_ffff_reproduced', 'invalid_owner_discarded',
-                    'unowned_retry_verified', 'unicode_verified', 'cancellation_verified', 'inputs_unchanged'):
-            assert native_dialog.get(key) is True, 'Missing native Save As check: ' + key
+                    'unowned_retry_verified', 'unicode_verified', 'cancellation_verified', 'inputs_unchanged', 'output_entry_verified'):
+            assert native_dialog.get(key) is True, 'Missing native GUI check: ' + key
         assert all(gui.get(key) is True for key in (
             'dialog_abi_verified', 'dialog_unicode_buffers_verified', 'dialog_cancel_and_errors_verified',
             'lni_folder_analyzed', 'lni_marker_analyzed', 'lni_project_unchanged',

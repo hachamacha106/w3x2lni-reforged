@@ -3,7 +3,8 @@
 
 Requires Windows and Python 3.10+. Creates a fresh, disposable extraction.
 Does not launch the interactive application GUI, use an installed game, or extract CASC.
-Actual Save As calls run on an owned, non-input desktop that is never displayed.
+Actual Save As calls and editable output controls are checked on an owned,
+non-input desktop that is never displayed.
 """
 from __future__ import annotations
 
@@ -88,7 +89,7 @@ def main():
         "status": "running", "started_utc": datetime.now(timezone.utc).isoformat(),
         "archive_sha256": sha256(archive.read_bytes()),
         "version": release["version"], "platform": "Windows", "native_windows_execution": True,
-        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS; headless GUI archive adapters/workers and isolated native Save As calls",
+        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS; headless GUI archive adapters/workers and isolated native Save As/output-entry controls",
         "gui_tested": False, "system_clipboard_tested": False, "game_tested": False,
         "world_editor_tested": False, "casc_storage_extraction_tested": False,
         "archive_unchanged": False, "packaged_inputs_unchanged": False,

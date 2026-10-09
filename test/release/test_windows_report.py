@@ -48,7 +48,7 @@ def fixture():
             'native_dialog':{'status':'passed','isolated_desktop':True,'hook_used':False,
                 'input_desktop_switched':False,'interactive_dialog_tested':False,'gui_rendering_tested':False,
                 'owner_error_ffff_reproduced':True,'invalid_owner_discarded':True,'unowned_retry_verified':True,
-                'unicode_verified':True,'cancellation_verified':True,'inputs_unchanged':True},
+                'unicode_verified':True,'cancellation_verified':True,'inputs_unchanged':True,'output_entry_verified':True},
             'lni_folder_analyzed':True,'lni_marker_analyzed':True,'lni_project_unchanged':True,
             'optimization_worker_verified':True,'failure_reports_verified':True,'failure_recovery_verified':True},
         'lossless_archive':{'status':'passed' ,'source_unchanged':True,'decoded_payloads_equal':True,
@@ -110,7 +110,7 @@ class WindowsReportTests(unittest.TestCase):
         for key in ('input_desktop_switched','interactive_dialog_tested','gui_rendering_tested'):
             mutations.append(lambda r,key=key:r['gui_archive_actions']['native_dialog'].update({key:True}))
         for key in ('isolated_desktop','owner_error_ffff_reproduced','invalid_owner_discarded',
-                    'unowned_retry_verified','unicode_verified','cancellation_verified','inputs_unchanged'):
+                    'unowned_retry_verified','unicode_verified','cancellation_verified','inputs_unchanged','output_entry_verified'):
             mutations.append(lambda r,key=key:r['gui_archive_actions']['native_dialog'].update({key:False}))
         for mutation in mutations:
             report=copy.deepcopy(original);mutation(report)

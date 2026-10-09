@@ -10,7 +10,7 @@ window = {}
 
 ext.on_timer = timer.update
 function ext.on_dropfile(filename)
-    if window._choosing_output or window._closing or window._worker and not window._worker.exited then
+    if window._closing or window._worker and not window._worker.exited then
         return
     end
     local check_lni_mark = require 'share.check_lni_mark'

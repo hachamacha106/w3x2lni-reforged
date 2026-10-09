@@ -1,4 +1,4 @@
-local save_dialog = require 'ffi.save_file_dialog'
+local gui = require 'yue.gui'
 local backend = require 'gui.backend'
 local timer = require 'gui.timer'
 local messagebox = require 'ffi.messagebox'
@@ -16,6 +16,7 @@ local recovery_error
 local view
 local data
 local element
+local output_input
 
 local function getexe()
     local i = 0
@@ -96,10 +97,30 @@ local template = ui.container {
         style = { FlexGrow = 1, JustifyContent = 'flex-start' },
         -- filename
         ui.button {
+            id = 'filename',
             style = { Height = 36, MarginTop = 4, MarginBottom = 16 },
             bind = {
                 title = 'filename',
                 color = 'theme'
+            },
+        },
+        ui.container {
+            style = { MarginBottom = 12 },
+            bind = { visible = 'output.visible' },
+            ui.label {
+                text = lang.ui.OPTIMIZE_SAVE,
+                align = 'start',
+                style = { Height = 24, MarginBottom = 4 },
+            },
+            ui.entry {
+                id = 'output_path',
+                style = { Height = 34 },
+                font = { size = 14 },
+                bind = { text = 'output.text' },
+                on = { tab = function(_, event)
+                    if event.modifiers & gui.Event.maskshift ~= 0 then element.filename:focus()
+                    else element.start:focus() end
+                end },
             },
         }
     },
@@ -152,6 +173,7 @@ local template = ui.container {
         },
         -- start
         ui.button {
+            id = 'start',
             title = lang.ui.START,
             style = { Height = 50 },
             bind = {
@@ -160,30 +182,36 @@ local template = ui.container {
             on = {
                 click = function ()
                     local ok, err = xpcall(function()
-                        if window._choosing_output or window._closing or worker and not worker.exited then
+                        if window._closing or worker and not worker.exited then
                             return
                         end
                         local arguments = {window._mode, window._filename:string()}
                         if window._mode == 'optimize' then
-                            -- An unowned fallback dialog still pumps this GUI's messages.
-                            -- Do not permit nested starts or a new map during path selection.
-                            local dialog_options = {
-                                title = lang.ui.OPTIMIZE_SAVE,
-                                filename = window._filename:stem():string() .. '.optimized' .. window._filename:extension():string(),
-                                folder = window._filename:parent_path():string(),
-                            }
-                            window._choosing_output = true
-                            local chosen, destination, dialog_error = pcall(save_dialog, dialog_options)
-                            window._choosing_output = false
-                            if not chosen then error(destination, 0) end
-                            if dialog_error then error(dialog_error, 0) end
-                            if not destination or window._closing or window._mode ~= arguments[1]
-                                or window._filename:string() ~= arguments[2] then return end
-                            arguments[3] = destination
-                            if fs.exists(fs.path(arguments[3])) then
+                            -- Choosing an output must not depend on the retained
+                            -- runtime's failing native file-picker implementation.
+                            local text = data.output.text:match('^%s*(.-)%s*$')
+                            if text:sub(1, 1) == '"' and text:sub(-1) == '"' then
+                                text = text:sub(2, -2)
+                            end
+                            if text == '' or data.output.text:find('%c') then
+                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_INVALID_PATH)
+                                return
+                            end
+                            local destination = fs.path(text)
+                            local extension = destination:extension():string():lower()
+                            if not destination:is_absolute() or (extension ~= '.w3x' and extension ~= '.w3m') then
+                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_INVALID_PATH)
+                                return
+                            end
+                            if fs.exists(destination) then
                                 messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_NEW_PATH)
                                 return
                             end
+                            if not fs.is_directory(destination:parent_path()) then
+                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_PARENT_PATH)
+                                return
+                            end
+                            arguments[3] = destination:string()
                         end
                         recovering, recovery_error = false, nil
                         backend:init(getexe(), fs.current_path())
@@ -214,6 +242,7 @@ view, data, element = ui.create(template, {
     filename = '',
     message  = '',
     theme = window._color,
+    output = { text = '', visible = false },
     report   = {
         text  = '',
         color = window._color,
@@ -229,6 +258,14 @@ view, data, element = ui.create(template, {
 function view:on_show()
     update_show()
     data.filename = window._filename:filename():string()
+    data.output.visible = window._mode == 'optimize'
+    if data.output.visible and output_input ~= window._filename:string() then
+        local input = fs.absolute(window._filename)
+        local extension = input:extension():string()
+        if extension == '' then extension = '.w3x' end
+        data.output.text = (input:parent_path() / (input:stem():string() .. '.optimized' .. extension)):string()
+        output_input = window._filename:string()
+    end
     if window._mode == 'analyze' then
         data.message = lang.ui.ANALYZE_HINT
     elseif window._mode == 'optimize' then

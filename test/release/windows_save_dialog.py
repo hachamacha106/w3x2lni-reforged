@@ -1,4 +1,4 @@
-"""Exercise real Win32 Save As on owned desktops that are never displayed.
+"""Exercise real native Entry and Win32 Save As on undisplayed owned desktops.
 
 The controller never calls SwitchDesktop. It posts cancellation only to dialogs
 belonging to its exact child process. No user window or map file is touched.
@@ -16,7 +16,7 @@ import time
 import uuid
 
 
-SCENARIOS = ("valid_owner", "yue_callback", "invalid_owner_control", "invalid_owner_adapter", "owner_retry")
+SCENARIOS = ("valid_owner", "yue_callback", "invalid_owner_control", "invalid_owner_adapter", "owner_retry", "output_entry")
 
 
 class NativeController:
@@ -155,10 +155,11 @@ class NativeController:
             marker = "SAVE_DIALOG_NATIVE|" + scenario + "|passed"
             if marker not in content:
                 raise RuntimeError(f"Native Save As child supplied no pass evidence: {scenario}")
-            if scenario != "invalid_owner_control" and not cancelled:
+            no_dialog = scenario in ("invalid_owner_control", "output_entry")
+            if not no_dialog and not cancelled:
                 raise RuntimeError(f"Native Save As created no cancellable dialog: {scenario}")
-            if scenario == "invalid_owner_control" and cancelled:
-                raise RuntimeError("Invalid owner unexpectedly created a dialog")
+            if no_dialog and cancelled:
+                raise RuntimeError(f"Native no-dialog scenario unexpectedly created a dialog: {scenario}")
             leftovers = []
 
             @self.Enum
@@ -228,7 +229,7 @@ def run(package_root, evidence_directory):
     result = {"status": "passed", "isolated_desktop": True, "hook_used": False,
               "owner_error_ffff_reproduced": True, "invalid_owner_discarded": True,
               "unowned_retry_verified": True, "unicode_verified": True,
-              "inputs_unchanged": True,
+              "output_entry_verified": True, "inputs_unchanged": True,
               "input_scope": "test/fixtures and suggested destination",
               "native_dialog_invocation_verified": True,
               "owner_validation_verified": True, "invalid_owner_control_verified": True,

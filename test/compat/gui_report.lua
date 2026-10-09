@@ -22,6 +22,7 @@ function path_mt:parent_path() return path(assert(self.value:match('^(.*)/[^/]+$
 function path_mt:filename() return path(assert(self.value:match('[^/]+$'))) end
 function path_mt:extension() return path(self.value:match('(%.[^/%.]+)$') or '') end
 function path_mt:stem() return path(self:filename():string():gsub('%.[^%.]+$', '')) end
+function path_mt:is_absolute() return self.value:sub(1, 1) == '/' or self.value:match('^%a:[/\\]') ~= nil end
 
 local function create_app(locale)
     local observed = {controls = {}, windows = {}, clipboard = {}, selection_copies = {},
@@ -145,6 +146,14 @@ local function create_app(locale)
         Button = {create = function(title)
             local view = control('Button'); view:settitle(title); return view
         end},
+        Entry = {create = function()
+            local view = control('Entry')
+            function view:gettext()
+                observed.entry_reads = (observed.entry_reads or 0) + 1
+                return self.text
+            end
+            return view
+        end},
         TextEdit = {create = function(options)
             local view = control('TextEdit'); view.options = options; return view
         end},
@@ -242,6 +251,7 @@ local function create_app(locale)
         ['gui.new.template.label'] = true,
         ['gui.new.template.button'] = true,
         ['gui.new.template.textedit'] = true,
+        ['gui.new.template.entry'] = true,
         ['gui.new.template.scroll'] = true,
         ['gui.event'] = true,
         ['gui.timer'] = true,
@@ -485,37 +495,82 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
 end
 
 
--- Exercise the actual action/Save As handlers with a strict dialog/worker
+-- The actual output entry must read user edits back into the binding without
+-- touching the report TextEdit's unsafe complete-log getter or recursing on
+-- programmatic settext signals.
+do
+    local app = create_app('enUS')
+    local ui = app.require('gui.new.template')
+    local tab_events = {}
+    local _, data, elements = ui.create(ui.container {
+        ui.entry {id = 'output', bind = {text = 'output.text', visible = 'output.visible'},
+            on = {tab = function(control, event) tab_events[#tab_events + 1] = {control, event} end}},
+        ui.entry {id = 'mirror', bind = {text = 'output.text'}},
+    }, {output = {text = root .. '/地图 hráč.optimized.w3x', visible = true}})
+    equal(elements.output.text, data.output.text)
+    equal(elements.mirror.text, data.output.text)
+    equal(app.entry_reads, nil, 'Programmatic entry loads must not read the native text back')
+    local edited = root .. '/Edited path/优化 hráč 😀.w3m'
+    elements.output:settext(edited)
+    equal(data.output.text, edited, 'An editable output must update its binding')
+    equal(elements.mirror.text, edited, 'User edits must update another binding subscriber')
+    equal(app.entry_reads, 1, 'User edits must read the entry once without recursive signals')
+    data.output.text = root .. '/Programmatic next output.w3x'
+    equal(elements.output.text, data.output.text)
+    equal(elements.mirror.text, data.output.text)
+    equal(app.entry_reads, 1, 'Programmatic binding changes must not echo into native reads')
+    data.output.visible = false
+    assert(not elements.output.visible)
+    data.output.visible = true
+    assert(elements.output.visible)
+    assert(elements.output:onkeydown {key = 'Tab', modifiers = 0})
+    assert(elements.output:onkeydown {key = 'tAB', modifiers = app.gui.Event.maskshift})
+    equal(#tab_events, 2)
+    equal(tab_events[1][1], elements.output)
+    equal(tab_events[2][2].modifiers, app.gui.Event.maskshift)
+    for _, modifier in ipairs {app.gui.Event.maskcontrol, app.gui.Event.maskalt, app.gui.Event.maskmeta,
+        app.gui.Event.maskcontrol | app.gui.Event.maskshift} do
+        assert(not elements.output:onkeydown {key = 'Tab', modifiers = modifier})
+    end
+    assert(not elements.output:onkeydown {key = 'Enter', modifiers = 0})
+    assert(not elements.mirror:onkeydown {key = 'Tab', modifiers = 0}, 'Entry without a Tab destination must not consume Tab')
+    equal(#tab_events, 2, 'Modified Tab and other keys must not call the focus destination')
+    equal(data.output.text, root .. '/Programmatic next output.w3x', 'Keyboard focus navigation must not change output text')
+    print('PASS editable output Entry Unicode round-trip, shared binding, visibility, keyboard navigation and recursion guard')
+end
+
+-- Exercise the actual action/output handlers with a strict path/worker
 -- boundary. No native GUI is opened and no map files are written.
 for _, locale in ipairs {'enUS', 'zhCN'} do
     local app = create_app(locale)
     local labels = app.lang.ui
     equal(app.require('share.brand').window_title('Analyze'), 'W3x2lni Reforged - Analyze')
     equal(app.require('share.brand').window_title('Optimize'), 'W3x2lni Reforged - Optimize')
-    local observed = {opens = {}, dialogs = {}, errors = {}, events = {}, loops = 0, timers = {}}
+    local observed = {opens = {}, errors = {}, events = {}, loops = 0, timers = {}, sources = {}}
     local ui = {}
-    for _, kind in ipairs {'container', 'button', 'label', 'progress', 'checkbox', 'tree'} do
+    for _, kind in ipairs {'container', 'button', 'label', 'progress', 'checkbox', 'tree', 'entry'} do
         ui[kind] = function(template) return template end
     end
     local captured, captured_data = {}, {}
     function ui.create(template, data)
         captured[#captured + 1] = template
         captured_data[#captured_data + 1] = data
-        return {setvisible = function() end}, data, {config = {addchildview = function() end}}
+        return {setvisible = function() end}, data, {
+            config = {addchildview = function() end},
+            start = {focus = function() observed.focus = 'start' end},
+            filename = {focus = function() observed.focus = 'filename' end},
+        }
     end
     ui.createEx = function() return {} end
-    local native_window = {} -- Deliberately distinct from the controller table.
-    -- Share the actual main controller: its drop/close handlers must see the
-    -- same modal-selection state as the action handlers below.
     local window = app.window
-    window._filename, window._window, window._color = path(root .. '/Maps with spaces/input.w3x'),
-        native_window, '#00ADD9'
+    window._filename, window._color = path(root .. '/Maps with spaces/input.w3x'), '#00ADD9'
+    observed.sources[window._filename:string()] = true
     function window:set_theme(title, color)
         self._color = color
         for _, listener in ipairs(observed.events) do listener(color, title) end
     end
     function window:show_page(name) self.page = name end
-    local worker = {exited = true}
+    local worker = {exited = true, cancel_file = true}
     function worker:cancel() observed.cancels = (observed.cancels or 0) + 1; return true end
     local backend = {init = function() end}
     function backend:clean()
@@ -544,16 +599,8 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
         observed.opens[#observed.opens + 1] = arguments
         return worker
     end
-    local function save_dialog(options)
-        observed.dialogs[#observed.dialogs + 1] = options
-        if observed.dialog_callback then observed.dialog_callback() end
-        if observed.dialog_exception then error('dialog fixture exception') end
-        if observed.dialog_failure then return nil, 'dialog fixture failure' end
-        if not observed.accept_dialog then return nil end
-        return observed.destination
-    end
     local dependencies = {
-        ['ffi.save_file_dialog'] = save_dialog,
+        ['yue.gui'] = app.gui,
         ['gui.backend'] = backend,
         ['gui.timer'] = {loop = function(_, callback)
             observed.loops = observed.loops + 1
@@ -566,13 +613,21 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
         ['gui.new.databinding'] = function(data) return {proxy = data} end,
         ['gui.event'] = {on = function(_, listener) observed.events[#observed.events + 1] = listener end},
         ['bee.filesystem'] = {path = path, current_path = function() return path(root .. '/script') end,
-            exists = function(value) return value:string() == observed.existing end},
+            absolute = function(value)
+                return value:is_absolute() and value or path(root .. '/script/' .. value:string())
+            end,
+            exists = function(value)
+                if observed.path_failure then error('path validation fixture failure') end
+                local name = value:string()
+                return observed.sources[name] or name == observed.existing
+            end,
+            is_directory = function(value) return value:string() ~= observed.missing_parent end},
     }
     local environment = setmetatable({window = window, arg = {[0] = root .. '/bin/w3x2lni-lua.exe'},
         require = function(name) return assert(dependencies[name], 'Unmocked action dependency: ' .. name) end},
         {__index = _G})
     local convert = assert(loadfile(root .. '/script/gui/new/page/convert.lua', 't', environment))()
-    local conversion_template = captured[1]
+    local conversion_template, conversion_data = captured[1], captured_data[1]
     local function handler(template, title)
         if template.title == title and template.on and template.on.click then return template.on.click end
         for _, child in ipairs(template) do
@@ -580,61 +635,94 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
             if found then return found end
         end
     end
+    local function identified(template, id)
+        if template.id == id then return template end
+        for _, child in ipairs(template) do
+            local found = identified(child, id)
+            if found then return found end
+        end
+    end
+    local output_template = assert(identified(conversion_template, 'output_path'))
+    equal(output_template.bind.text, 'output.text', 'The real field must bind to the submitted output')
+    assert(output_template.on and type(output_template.on.tab) == 'function')
+    output_template.on.tab(nil, {modifiers = 0})
+    equal(observed.focus, 'start', 'Tab from the output path must focus Start')
+    output_template.on.tab(nil, {modifiers = app.gui.Event.maskshift})
+    equal(observed.focus, 'filename', 'Shift+Tab from the output path must focus the preceding control')
     local start = assert(handler(conversion_template, labels.START))
     assert(loadfile(root .. '/script/gui/new/page/select.lua', 't', environment))()
     local select_template = captured[2]
     assert(handler(select_template, labels.ANALYZE_MAP))()
+    convert:on_show()
     equal(window._mode, 'analyze'); equal(window.page, 'convert')
+    assert(not conversion_data.output.visible, 'Analyze must hide the output field')
     start()
-    equal(#observed.dialogs, 0, 'Analyze must not ask for an output path')
     equal(#observed.opens, 1)
     equal(observed.opens[1][1], 'analyze'); equal(#observed.opens[1], 2)
     equal(observed.opens[1][2], window._filename:string())
     assert(handler(select_template, labels.OPTIMIZE_MAP))()
+    convert:on_show()
     equal(window._mode, 'optimize')
-    observed.accept_dialog = false
-    start()
-    equal(#observed.opens, 1, 'Cancelling Save As must not start a worker')
-    local dialog = observed.dialogs[1]
-    equal(dialog.title, labels.OPTIMIZE_SAVE)
-    equal(dialog.filename, 'input.optimized.w3x')
-    equal(dialog.folder, window._filename:parent_path():string())
-    observed.accept_dialog = true
-    observed.destination = window._filename:string()
-    observed.existing = observed.destination
-    start()
-    equal(#observed.opens, 1, 'Optimize must reject the source or any existing destination')
-    equal(#observed.errors, 1)
-    observed.destination = root .. '/Maps with spaces/optimized.w3x'
+    assert(conversion_data.output.visible)
+    equal(conversion_data.output.text, root .. '/Maps with spaces/input.optimized.w3x')
+
+    local function reject(destination, message)
+        local opens, errors, loops = #observed.opens, #observed.errors, observed.loops
+        conversion_data.output.text = destination
+        start()
+        equal(#observed.opens, opens, 'Rejected output must not launch a worker')
+        equal(observed.loops, loops, 'Rejected output must not schedule worker polling')
+        equal(#observed.errors, errors + 1)
+        equal(observed.errors[#observed.errors][3], message)
+        equal(conversion_data.output.text, destination, 'Invalid output must stay editable')
+        assert(not app.loop_quit, 'Output validation must not close the application')
+    end
+    reject(window._filename:string(), labels.OPTIMIZE_NEW_PATH)
+    observed.existing = root .. '/Maps with spaces/Existing optimized.w3x'
+    reject(observed.existing, labels.OPTIMIZE_NEW_PATH)
+    for _, invalid in ipairs {'', '   ', 'relative.w3x', 'C:relative.w3x', root .. '/bad.txt',
+        root .. '/bad.w3x\nextra', root .. '/bad\0.w3x', root .. '/bad\r.w3m',
+        root .. '/bad\tpath.w3x', root .. '/bad\1path.w3x',
+        '"' .. root .. '/Maps with spaces/input.w3x', root .. '/No extension'} do
+        reject(invalid, labels.OPTIMIZE_INVALID_PATH)
+    end
+    observed.missing_parent = root .. '/Missing parent'
+    reject(observed.missing_parent .. '/new.w3x', labels.OPTIMIZE_PARENT_PATH)
+    observed.missing_parent = nil
+    local destination = root .. '/Maps with spaces/优化 hráč 😀.W3M'
+    conversion_data.output.text = '  "' .. destination .. '"  '
     start()
     equal(#observed.opens, 2)
     equal(observed.opens[2][1], 'optimize')
     equal(observed.opens[2][2], window._filename:string())
-    equal(observed.opens[2][3], observed.destination)
+    equal(observed.opens[2][3], destination, 'Unicode Copy As Path text must route the chosen destination')
     worker.exited = false
-    local dialogs = #observed.dialogs
     start()
     equal(#observed.opens, 2, 'A running operation must not start a second worker')
-    equal(#observed.dialogs, dialogs)
     equal(observed.loops, 2)
+    local input_before_drop = window._filename
+    app.ext.on_dropfile(root .. '/Never read this busy dropped map.w3x')
+    equal(window._filename, input_before_drop, 'A running operation must reject map drops')
     assert(handler(conversion_template, labels.CANCEL_OPERATION))()
     equal(observed.cancels, 1, 'Cancel must request cooperative worker cleanup')
 
-    local conversion_data = captured_data[1]
     worker.exited = true
-    observed.dialog_failure = true
+    conversion_data.output.text = destination
+    observed.path_failure = true
     start()
-    equal(#observed.opens, 2, 'A failing picker must not start a worker')
-    assert(backend.report_text:find('dialog fixture failure', 1, true))
+    observed.path_failure = false
+    equal(#observed.opens, 2, 'A filesystem validation error must not launch a worker')
+    assert(backend.report_text:find('path validation fixture failure', 1, true))
     assert(conversion_data.report.visible and conversion_data.report.color == '#C33')
-    assert(not conversion_data.cancel.visible)
-    observed.dialog_failure, observed.spawn_failure = false, true
+    assert(not conversion_data.cancel.visible and not conversion_data.progress.visible)
+    observed.spawn_failure = true
     start()
     equal(#observed.opens, 2)
     assert(backend.report_text:find('native spawn failed', 1, true))
     assert(conversion_data.report.visible and not conversion_data.progress.visible)
     observed.spawn_failure = false
     start()
+    assert(backend.report_text == nil, 'A successful retry must clear previous diagnostics')
     worker.exited = false
     function worker:update() error('timer fixture failure') end
     local removed = false
@@ -660,114 +748,44 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     equal(#observed.opens, opens_before_retry + 1, 'A completed recovery must permit a fresh retry')
     assert(backend.report_text == nil, 'Retry must clear the previous failure report')
     assert(not app.loop_quit, 'A startup or update error must not close the application')
+    print('PASS ' .. locale .. ' editable Optimize routing, invalid/existing output rejection and cancellation')
+    print('PASS ' .. locale .. ' output validation/spawn errors, recovery polling and safe retry reports')
 
-    -- A NULL-owner retry leaves the app window enabled. The nested native
-    -- message loop must not permit another Start or map drop during selection.
-    local picker_input = window._filename:string()
-    local picker_opens, picker_dialogs = #observed.opens, #observed.dialogs
-    local nested_completed = false
-    observed.dialog_callback = function()
-        assert(window._choosing_output, 'Save As must guard the complete native selection call')
-        start()
-        equal(#observed.dialogs, picker_dialogs + 1, 'Nested Start opened another picker')
-        equal(#observed.opens, picker_opens, 'Nested Start launched a worker')
-        app.ext.on_dropfile(root .. '/Never read this dropped map.w3x')
-        equal(window._filename:string(), picker_input, 'A modal map drop changed the selected input')
-        equal(window._mode, 'optimize', 'A modal map drop changed the operation')
-        nested_completed = true
-    end
-    observed.accept_dialog = false
-    start()
-    assert(nested_completed, 'Nested Start/drop checks did not complete')
-    assert(not window._choosing_output, 'Cancellation left selection locked')
-    equal(#observed.opens, picker_opens, 'Cancellation after nested messages launched a worker')
-    observed.dialog_callback = nil
-    for _, failure in ipairs {'dialog_failure', 'dialog_exception'} do
-        observed[failure] = true
-        start()
-        observed[failure] = false
-        assert(not window._choosing_output, failure .. ' left selection locked')
-        equal(#observed.opens, picker_opens, failure .. ' launched a worker')
-        assert(backend.report_text:find(failure == 'dialog_failure' and 'dialog fixture failure'
-            or 'dialog fixture exception', 1, true), 'Picker failure lost its diagnostic')
-    end
-    local good_input = window._filename
-    local invalid_options_input = path(good_input:string())
-    function invalid_options_input:stem() error('output options fixture exception') end
-    window._filename = invalid_options_input
-    local dialogs_before_options = #observed.dialogs
-    start()
-    assert(not window._choosing_output, 'Building dialog options left selection locked')
-    equal(#observed.dialogs, dialogs_before_options, 'Invalid options reached the native picker')
-    equal(#observed.opens, picker_opens, 'Invalid options launched a worker')
-    assert(backend.report_text:find('output options fixture exception', 1, true))
-    window._filename = good_input
-    observed.accept_dialog = true
-    start()
-    equal(#observed.opens, picker_opens + 1, 'A picker exception/cancellation must allow a fresh retry')
-    assert(not window._choosing_output and backend.report_text == nil)
-    print('PASS ' .. locale .. ' Save As nested Start/drop rejection and cancellation/error recovery')
+    -- Back from a report preserves edits for the same input; a newly selected
+    -- source receives its own default, including legacy .w3m and LNI folders.
+    local edited = root .. '/User edits preserved.w3x'
+    conversion_data.output.text = edited
+    convert:on_show()
+    equal(conversion_data.output.text, edited, 'Back must retain the chosen output')
+    window._mode = 'analyze'; convert:on_show()
+    assert(not conversion_data.output.visible)
+    window._mode = 'optimize'; convert:on_show()
+    equal(conversion_data.output.text, edited, 'Analyze/Optimize toggling must retain edits for the same source')
+    window._filename = path(root .. '/地图 hráč/Legacy map.w3m')
+    convert:on_show()
+    equal(conversion_data.output.text, root .. '/地图 hráč/Legacy map.optimized.w3m')
+    window._filename = path(root .. '/LNI folder')
+    convert:on_show()
+    equal(conversion_data.output.text, root .. '/LNI folder.optimized.w3x')
+    window._filename = path('Relative map.w3x')
+    convert:on_show()
+    equal(conversion_data.output.text, root .. '/script/Relative map.optimized.w3x')
+    window._filename = input_before_drop
+    convert:on_show()
+    equal(conversion_data.output.text, root .. '/Maps with spaces/input.optimized.w3x')
+    print('PASS ' .. locale .. ' output path visibility, defaults and edit persistence across report navigation')
 
-    local original_input = window._filename
-    for _, mutation in ipairs {'mode', 'input'} do
-        local opens_before_change = #observed.opens
-        observed.dialog_callback = function()
-            assert(window._choosing_output)
-            if mutation == 'mode' then window._mode = 'analyze'
-            else window._filename = path(root .. '/Changed during picker.w3x') end
-        end
-        start()
-        equal(#observed.opens, opens_before_change, 'Picker ' .. mutation .. ' change launched a stale operation')
-        assert(not window._choosing_output)
-        window._mode, window._filename = 'optimize', original_input
-    end
-    observed.dialog_callback = nil
+    local opens_before_close, errors_before_close = #observed.opens, #observed.errors
     local closing_cancelled = false
     window._worker = {exited = false, cancel_file = true, cancel = function() closing_cancelled = true end}
-    local opens_before_close = #observed.opens
-    observed.dialog_callback = function()
-        assert(window._choosing_output)
-        app.windows[1]:close()
-        assert(window._closing and app.loop_quit, 'Native Close must mark the controller before quitting')
-    end
-    start()
-    assert(closing_cancelled, 'Closing the app must request cancellation of a new archive action')
-    equal(#observed.opens, opens_before_close, 'Close during Save As launched a worker after quitting')
-    assert(not window._choosing_output, 'Close during Save As left selection locked')
-    local dialogs_before_close = #observed.dialogs
+    app.windows[1]:close()
+    assert(window._closing and app.loop_quit and closing_cancelled)
     start()
     app.ext.on_dropfile(root .. '/Never read this closing map.w3x')
-    equal(#observed.dialogs, dialogs_before_close, 'Closing application opened another picker')
-    equal(#observed.opens, opens_before_close, 'Closing application launched another worker')
-    equal(window._filename, original_input, 'Closing map drop changed the selected input')
-    -- A separate controller proves the exception-after-Close route without
-    -- pretending an already destroyed window can be reopened.
-    local close_failure_app = create_app(locale)
-    local close_failure_window = close_failure_app.window
-    close_failure_window._mode, close_failure_window._filename = 'optimize', original_input
-    environment.window = close_failure_window
-    local close_template_index, close_data_index = #captured + 1, #captured_data + 1
-    assert(loadfile(root .. '/script/gui/new/page/convert.lua', 't', environment))()
-    local close_start = assert(handler(captured[close_template_index], labels.START))
-    observed.dialog_callback = function()
-        assert(close_failure_window._choosing_output)
-        close_failure_app.windows[1]:close()
-        assert(close_failure_window._closing and close_failure_app.loop_quit)
-    end
-    observed.dialog_exception = true
-    local failures_before_close, opens_before_exception = observed.failures, #observed.opens
-    close_start()
-    assert(not close_failure_window._choosing_output, 'Close plus picker exception left selection locked')
-    equal(#observed.opens, opens_before_exception, 'Close plus picker exception launched a worker')
-    equal(observed.failures, failures_before_close, 'Picker failure updated diagnostics after the window closed')
-    local close_data = captured_data[close_data_index]
-    assert(not close_data.report.visible and not close_data.progress.visible and close_data.message == '',
-        'Picker failure updated destroyed UI state')
-    local close_dialogs = #observed.dialogs
-    close_start()
-    equal(#observed.dialogs, close_dialogs, 'Closing app retried the throwing picker')
-    print('PASS ' .. locale .. ' Save As close/mode/input changes abort stale operations')
-    print('PASS ' .. locale .. ' Analyze/Optimize routing, guarded Save As, cancellation and no overwrite')
+    equal(#observed.opens, opens_before_close, 'Closing application must not launch a worker')
+    equal(#observed.errors, errors_before_close, 'Closing application must not touch validation UI')
+    equal(window._filename, input_before_drop, 'Closing map drop changed the selected input')
+    print('PASS ' .. locale .. ' running/closing Start and map-drop guards preserve source selection')
 end
 
 

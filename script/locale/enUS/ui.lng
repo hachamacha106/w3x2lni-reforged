@@ -97,7 +97,7 @@ Optimize archive
 Inspect sizes, archive preservation and JASS verification.
 
 [OPTIMIZE_HINT]
-Lossless archive optimization; choose a new output file.
+Lossless archive optimization; review the output path, then Start.
 
 [OPTIMIZE_SAVE]
 Save optimized map to a new file
@@ -110,3 +110,9 @@ Cancel operation
 
 [CANCELLING]
 Cancelling; waiting for safe cleanup...
+
+[OPTIMIZE_INVALID_PATH]
+Enter a full path ending in .w3x or .w3m, on one line.
+
+[OPTIMIZE_PARENT_PATH]
+The output folder must already exist.
