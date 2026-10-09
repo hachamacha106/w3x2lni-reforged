@@ -49,6 +49,24 @@ local function update_data(key, meta, obj, new_obj)
     end
 end
 
+local function preserve_unknown_modifications(obj, source_key, target_key)
+    local extras = obj[target_key] or {}
+    local saved = {}
+    for _, modification in ipairs(extras) do
+        saved[modification] = true
+    end
+    for _, modification in ipairs(obj[source_key] or {}) do
+        if obj[modification[1]] and not saved[modification] then
+            extras[#extras+1] = modification
+        end
+    end
+    obj[source_key] = nil
+    if #extras > 0 then
+        obj[target_key] = extras
+        obj._keep_obj = true
+    end
+end
+
 local function update_obj(name, type, obj, data)
     local parent = obj._parent
     local temp = data[parent]
@@ -67,6 +85,11 @@ local function update_obj(name, type, obj, data)
             update_data(key, meta, obj, new_obj)
         end
     end
+    -- Metadata may lag an editor build. Keep records we cannot interpret,
+    -- including their data pointers, instead of dropping newer fields.
+    preserve_unknown_modifications(obj, '_object_modifications', '_object_extras')
+    preserve_unknown_modifications(obj, '_skin_modifications', '_skin_extras')
+    obj._object_original = nil
     for k, v in pairs(obj) do
         if string_sub(k, 1, 1) == '_' then
             new_obj[k] = v

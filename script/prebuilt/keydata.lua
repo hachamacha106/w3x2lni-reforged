@@ -1,4 +1,4 @@
-local messager = require 'share.messager'
+local messager
 local lang = require 'share.lang'
 local war3
 local loader
@@ -100,14 +100,47 @@ local function stringify(f, name, t)
     f[#f+1] = '}'
 end
 
+local function create_profile_schema(w2l, keydata)
+    if not war3.reforge then
+        return
+    end
+    local visited = {}
+    for _, profiles in ipairs {w2l.info.profile_skin or {}, w2l.info.profile_strings or {}} do
+        for _, filenames in pairs(profiles) do
+            for _, filename in ipairs(filenames) do
+                if not visited[filename] then
+                    visited[filename] = true
+                    local source = loader(filename)
+                    if source then
+                        local fields = {}
+                        for _, profile in pairs(w2l:parse_txt(source)) do
+                            for field in pairs(profile) do
+                                fields[field:lower()] = true
+                            end
+                        end
+                        local names = {}
+                        for field in pairs(fields) do
+                            names[#names + 1] = field
+                        end
+                        keydata[filename] = names
+                    end
+                end
+            end
+        end
+    end
+end
+
 return function(w2l, war3_, loader_)
     war3 = war3_
     loader = loader_
+    messager = w2l.messager
+    key_cache = {}
     messager.text(lang.raw.CREATING .. 'keydata')
     local keydata = {}
     for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'doodad', 'destructable', 'misc'} do
         create_keydata(w2l, type, keydata)
     end
+    create_profile_schema(w2l, keydata)
     local f = {}
     for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'doodad', 'destructable', 'misc'} do
         stringify(f, type, keydata[type])

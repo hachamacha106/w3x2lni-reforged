@@ -89,6 +89,13 @@ return function (_w2l, load_map)
     local txt = w2l.parse_txt
     
     local hook
+    local native_profile_base
+    local native_profile_strings
+    local string_profiles = {}
+    for _, filenames in pairs(w2l.info.profile_strings or {}) do
+        for _, filename in ipairs(filenames) do string_profiles[filename] = true end
+    end
+    local profile_schema = load_map and w2l:keydata()
     function w2l:parse_slk(...)
         if hook then
             local r = slk(self, ...)
@@ -99,14 +106,34 @@ return function (_w2l, load_map)
         return slk(self, ...)
     end
 
-    function w2l:parse_txt(...)
+    function w2l:parse_txt(buffer, filename, destination)
+        local r
+        if native_profile_base ~= nil then
+            local base = native_profile_base
+            local strings = native_profile_strings
+            native_profile_base = nil
+            native_profile_strings = nil
+            r = txt(self, base, filename, destination)
+            -- Parsing into an existing table appends property arrays. Native
+            -- map profiles override whole properties, including empty values.
+            local overrides = txt(self, buffer, filename)
+            for name, fields in pairs(overrides) do
+                r[name] = r[name] or {}
+                for key, values in pairs(fields) do
+                    -- An empty localized skin value explicitly clears its
+                    -- stock text. Keep it representable in table/txt.ini.
+                    if strings and #values == 0 then values = {''} end
+                    r[name][key] = values
+                end
+            end
+        else
+            r = txt(self, buffer, filename, destination)
+        end
         if hook then
-            local r = txt(self, ...)
             hook(r)
             hook = nil
-            return r
         end
-        return txt(self, ...)
+        return r
     end
     
     local result = w2l:frontend_slk(function(name)
@@ -123,6 +150,11 @@ return function (_w2l, load_map)
         if load_map then
             local buf = w2l:file_load('map', name)
             if buf then
+                local filename = name:lower()
+                if filename:sub(-4) == '.txt' and profile_schema[filename] then
+                    native_profile_base = w2l:mpq_load(name) or ''
+                    native_profile_strings = string_profiles[filename]
+                end
                 return buf
             end
         end

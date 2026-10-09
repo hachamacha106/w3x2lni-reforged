@@ -4,9 +4,18 @@ local type = type
 local w2l
 
 local function has_slk(w2l)
-    for _, name in ipairs(w2l.info.txt) do
-        if w2l:file_load('map', name) then
-            return true
+    for _, filenames in ipairs {w2l.info.txt, w2l.info.reforge, w2l.info.txt_optional or {}} do
+        for _, name in ipairs(filenames) do
+            if w2l:file_load('map', name) then
+                return true
+            end
+        end
+    end
+    for _, filenames in pairs(w2l.info.profile_strings or {}) do
+        for _, name in ipairs(filenames) do
+            if w2l:keydata()[name] and w2l:file_load('map', name) then
+                return true
+            end
         end
     end
     for _, slks in pairs(w2l.info.slk) do
@@ -33,18 +42,92 @@ local function load_slk(w2l)
     end
 end
 
+local function load_skin_obj(w2l, type, buf, wts, objects)
+    local force_slk = w2l.force_slk
+    local skins = w2l:frontend_obj(type, buf, wts)
+    -- A skin's original ID can name a custom object in the main object file.
+    -- Resolve it below before deciding whether map SLKs are needed.
+    w2l.force_slk = force_slk
+    objects = objects or {}
+    local default = w2l:get_default()[type]
+    for id, skin in pairs(skins) do
+        local obj = objects[id]
+        if not obj then
+            obj = {
+                _id = id,
+                _parent = skin._parent,
+                _type = type,
+                _obj = true,
+                _skin_only = true,
+            }
+            objects[id] = obj
+        elseif skin._parent ~= id and skin._parent ~= obj._parent then
+            error(('Conflicting parents for %s object %s in the main and skin object files.'):format(type, id))
+        end
+        if not default[obj._parent] then
+            w2l.force_slk = true
+        end
+        obj._skin_version = skin._object_version
+        obj._skin_data = skin._object_data
+        obj._skin_parent = skin._parent
+        obj._skin_original = skin._object_original
+        obj._skin_modifications = skin._object_modifications
+        obj._skin_fields = {}
+        -- The skin layout and opaque headers have no SLK equivalent. Keep
+        -- these objects in the binary output while optimizing other objects.
+        obj._keep_obj = true
+        local skin_fields = {}
+        for _, modification in ipairs(skin._object_modifications) do
+            local level = modification[3] == 0 and 1 or modification[3]
+            local field = modification[1] .. ':' .. level
+            if not skin_fields[field] then
+                skin_fields[field] = true
+                obj._skin_fields[#obj._skin_fields+1] = field
+            end
+        end
+        -- Preserve a main-file override even when the skin overrides the
+        -- same field and level. Only the skin's effective value is editable
+        -- under the normal LNI field name.
+        for _, modification in ipairs(obj._object_modifications or {}) do
+            local level = modification[3] == 0 and 1 or modification[3]
+            if skin_fields[modification[1] .. ':' .. level] then
+                obj._object_extras = obj._object_extras or {}
+                obj._object_extras[#obj._object_extras+1] = modification
+            end
+        end
+        for key, values in pairs(skin) do
+            if key:sub(1, 1) ~= '_' then
+                local target = obj[key] or {}
+                obj[key] = target
+                for level, value in pairs(values) do
+                    target[level] = value
+                end
+            end
+        end
+    end
+    return objects
+end
+
 local function load_obj(w2l, wts)
     local objs = {}
     local count = 0
     for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'doodad', 'destructable', 'misc'} do
         local name = w2l.info.obj[type]
         local buf = w2l:file_load('map', name)
-        local count = count + 1
+        count = count + 1
         if buf then
             w2l.messager.text(lang.script.CONVERT_ONE .. name)
             objs[type] = w2l:frontend_obj(type, buf, wts)
-            w2l.progress(count / 8)
         end
+        if type ~= 'misc' then
+            local skin_name = name:gsub('^war3map%.', 'war3mapskin.')
+            local skin = w2l:file_load('map', skin_name)
+            if skin then
+                w2l.messager.text(lang.script.CONVERT_ONE .. skin_name)
+                objs[type] = load_skin_obj(w2l, type, skin, wts, objs[type])
+            end
+        end
+        w2l.progress(count / 8)
     end
     return objs
 end

@@ -38,6 +38,11 @@ local need_mark = {
     ChooseRandomItemBJ = 'item',
     ChooseRandomItemEx = 'item',
     ChooseRandomItemExBJ = 'item',
+    ChooseRandomItemExWithFilter = 'item',
+    ChooseRandomItemExWithFilterBJ = 'item',
+    -- The includes variants may select items with pickrandom disabled.
+    ChooseRandomItemExWithFilterAndIncludes = 'all_items',
+    ChooseRandomItemExWithFilterAndIncludesBJ = 'all_items',
     UpdateEachStockBuildingEnum = 'item',
     UpdateEachStockBuilding = 'marketplace',
     PerformStockUpdates = 'marketplace',
@@ -70,6 +75,9 @@ local function fint4(str)
 end
 
 local function fbj(id)
+    if id == 'BlzS2FourCC' or id == 'FourCC' then
+        marks.dynamic_ids = true
+    end
     if extra_func[id] then
         for _, name in ipairs(extra_func[id]) do
             ids[name] = true
@@ -84,6 +92,9 @@ local function fbj(id)
         end
         if need_mark[id] == 'item' and not marks.item then
             w2l.messager.report(lang.report.REMOVE_UNUSED_OBJECT, 4, lang.report.RETAIN_RANDOM_ITEM, (lang.report.REFERENCE_BY_JASS):format(id))
+        end
+        if need_mark[id] == 'all_items' and not marks.all_items then
+            w2l.messager.report(lang.report.REMOVE_UNUSED_OBJECT, 4, lang.report.RETAIN_ALL_ITEMS, (lang.report.REFERENCE_BY_JASS):format(id))
         end
         marks[need_mark[id]] = true
     end
@@ -123,11 +134,14 @@ local pjass = (ign + word + S'=+-*/><!()[],' + err(lang.report.SYNTAX_ERROR))^0
 
 return function (w2l_)
     w2l = w2l_
+    if w2l:file_load('map', 'war3map.lua') or w2l:file_load('map', 'scripts\\war3map.lua') then
+        return nil, nil, 'Lua map scripts do not have a complete object-reference analysis.'
+    end
     local buf = w2l:file_load('map', 'war3map.j')
     if not buf then
         buf = w2l:file_load('map', 'scripts\\war3map.j')
         if not buf then
-            return
+            return nil, nil, 'No map script was available for object-reference analysis.'
         end
     end
     ids = {}
@@ -136,7 +150,10 @@ return function (w2l_)
     local suc, err = xpcall(pjass.match, debug.traceback, pjass, buf)
     if not suc then
         w2l.messager.report(lang.report.ERROR, 1, lang.report.SYNTAX_ERROR, err:match('%.lua:%d+: (.*)'))
-        return
+        return nil, nil, 'JASS object-reference analysis failed.'
+    end
+    if marks.dynamic_ids then
+        return ids, marks, 'The map converts strings to object IDs with BlzS2FourCC or FourCC.'
     end
     return ids, marks
 end

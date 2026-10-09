@@ -172,14 +172,18 @@ local function is_enable(meta, type)
     return true
 end
 
-local characters = {'A','B','C','D','E','F','G','H','I', 'J'}
+local function data_letter(index)
+    assert(math.type(index) == 'integer' and index >= 1 and index <= 26,
+        ('Unsupported ability data column index: %s'):format(tostring(index)))
+    return string.char(string.byte('A') + index - 1)
+end
 
 local function parse_id(w2l, metadata, id, meta, type, has_level)
     local key = meta.field
     local num  = meta.data
     local objs = meta.useSpecific or meta.section
     if num and num ~= 0 then
-        key = key .. characters[num]
+        key = key .. data_letter(num)
     end
     if meta._has_index then
         key = key .. '_' .. (meta.index + 1)
@@ -224,7 +228,7 @@ local function parse_id(w2l, metadata, id, meta, type, has_level)
                 metadata[code] = { type = type }
             end
             if metadata[code][lkey] and metadata[code][lkey].id ~= data.id then
-                if fixer[code][lkey] then
+                if fixer and fixer[code] and fixer[code][lkey] then
                     if fixer[code][lkey].id == data.id then
                         metadata[code][lkey] = data
                     end
@@ -312,13 +316,13 @@ local function create_metadata(w2l, type, metadata, loader)
         -- 进行部分预处理
         local name  = v['field']
         local index = v['index']
-        if index and index >= 1 then
+        if is_enable(v, type) and index and index >= 1 then
             has_index[name] = true
         end
     end
     for k, v in pairs(tbl) do
         local name = v['field']
-        if has_index[name] then
+        if is_enable(v, type) and has_index[name] then
             v._has_index = true
         end
     end

@@ -1,8 +1,9 @@
 local cl = require 'share.changelog'
 local messager = require 'share.messager'
+local brand = require 'share.brand'
 
 return function()
-    messager.raw('W3x2Lni v' .. cl[1].version)
+    messager.raw(brand.name .. ' v' .. cl[1].version)
     local ok, gl = pcall(require, 'share.gitlog')
     if ok then
         messager.raw('\ncommit: ' .. gl.commit)

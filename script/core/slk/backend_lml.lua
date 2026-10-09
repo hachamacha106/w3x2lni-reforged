@@ -177,7 +177,8 @@ local function read_triggers(files, map)
             wct_index = wct_index + 1
         end
         if trg.wct == 1 then
-            local buf = wct.triggers[wct_index]
+            local buf = wct.triggers[trg.wct_index or wct_index]
+            assert(buf, 'Missing custom script for WTG trigger: ' .. trg.name)
             if #buf > 0 then
                 files[path..'.j'] = buf
             end
@@ -212,6 +213,12 @@ local function convert_config(wtg)
     add('FormatVersion', wtg.format_version)
     for i = 1, 11 do
         add('Unknown'..tostring(i), wtg['unknown'..tostring(i)])
+    end
+    if wtg.deleted_maps and #wtg.deleted_maps > 0 then
+        add('DeletedMaps', '{' .. table.concat(wtg.deleted_maps, ', ') .. '}')
+    end
+    if wtg.deleted_libraries and #wtg.deleted_libraries > 0 then
+        add('DeletedLibraries', '{' .. table.concat(wtg.deleted_libraries, ', ') .. '}')
     end
     return table.concat(lines, '\r\n')
 end

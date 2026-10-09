@@ -1,0 +1,212 @@
+|Cffc5ff26MENU COMMANDS|r
+
+|Cfffed312%QLog|r
+- Toggle the Quest Log on/off.
+
+|Cfffed312%Menu|r
+- Toggle the Game menu on/off.
+
+|Cfffed312%Ally|r
+- Toggle the Allies menu on/off.
+
+|Cfffed312%Chat|r
+- Toggle the Chat menu on/off.
+
+|Cfffed312Alt - F4|r
+- Exit Warcraft III.
+
+|Cfffed312%QSav|r
+- Quick Save.
+
+|Cfffed312%MEnd|r
+- Activate the End Game menu.
+
+|Cfffed312%MOpt|r
+- Activate the Options menu.
+
+|Cfffed312%MSav|r
+- Activate the Save menu.
+
+|Cfffed312%MLod|r
+- Activate the Load menu.
+
+|Cfffed312%MHlp|r
+- Activate the Help menu.
+
+|Cfffed312%TMus|r
+- Toggle music on/off.
+
+|Cfffed312%TSFX|r
+- Toggle SFX on/off.
+
+|Cfffed312Esc|r
+- Return to previous menu.
+
+
+|Cffc5ff26GAME COMMANDS|r
+
+|Cfffed312Left Mouse Button|r
+- Select units, buildings, command buttons, and points of action (where orders are to be carried out):
+   |Cffa1acff-- Selects units and buildings on screen.|r
+   |Cffa1acff-- Activates buttons from unit's command card.|r
+   |Cffa1acff-- Confirms placement of a command, building, ability, or item.|r
+   |Cffa1acff-- Uses an item from a Hero's inventory.|r
+   |Cffa1acff-- Changes game view to location on minimap.|r
+
+|Cfffed312Right Mouse Button|r
+- Perform "smart" actions on target units/buildings, ground, or minimap:
+   |Cffa1acff-- Ground - Moves unit to location, ignoring attacks.|r
+   |Cffa1acff-- Enemy unit or building - Attacks target.|r
+   |Cffa1acff-- Friendly unit - Follows target.|r
+   |Cffa1acff-- Tree or gold mine - Moves unit to location (gathers resources if a worker unit).|r
+   |Cffa1acff-- Item on ground - Hero moves to pick up item.|r
+   |Cffa1acff-- Item in Hero's inventory - Picks up item.|r
+   |Cffa1acff-- When targeting cursor is active - Cancels command.|r
+   |Cffa1acff-- When targeting cursor is active and over the minimap - Changes game view to location on minimap.|r
+
+|Cfffed312Middle Mouse Button|r
+- Hold down to scroll game view with mouse.
+
+|Cfffed312Esc|r
+- Cancel commands.
+
+|Cfffed312Enter|r
+- Activate message prompt. Press |Cfffed312Enter|r again to send message.
+
+|Cfffed312Shift + Enter|r
+- Activate message prompt to "All" players. Press |Cfffed312Enter|r again to send message.
+
+|Cfffed312Ctrl + Enter|r
+- Activate message prompt to "Allies" only. Press |Cfffed312Enter|r again to send message.
+
+|Cfffed312Arrow Keys|r
+- Scroll game view.
+
+|Cfffed312%sbgp|r
+- Switch between subgroups.
+
+|Cfffed312Alt|r (when held issuing a command)
+- Override formation movement during an action.
+
+|Cfffed312Ctrl|r (when held issuing a command)
+- Send action to currently active subgroup only.
+
+|Cfffed312Group Hotkeys|r
+   |Cffa1acff-- Group 1 - %Ctr1|r
+   |Cffa1acff-- Group 2 - %Ctr2|r
+   |Cffa1acff-- Group 3 - %Ctr3|r
+   |Cffa1acff-- Group 4 - %Ctr4|r
+   |Cffa1acff-- Group 5 - %Ctr5|r
+   |Cffa1acff-- Group 6 - %Ctr6|r
+   |Cffa1acff-- Group 7 - %Ctr7|r
+   |Cffa1acff-- Group 8 - %Ctr8|r
+   |Cffa1acff-- Group 9 - %Ctr9|r
+   |Cffa1acff-- Group 10 - %Ctr0|r
+
+|Cfffed312Ctrl + Group Hotkey|r
+- Assign selected units or buildings to group.
+
+|Cfffed312Shift + Group Hotkey|r
+- Add selected units to active group.
+
+|Cfffed312Group Hotkey|r
+- Select assigned group. Two rapid presses center view on assigned group.
+
+|Cfffed312F1 - F3|r
+- Select corresponding Hero. Two rapid presses center view on corresponding Hero.
+
+|Cfffed312%sidw|r
+- Select idle worker unit(s).
+
+|Cfffed312%ctcr|r
+- Cycle through town center buildings.
+
+|Cfffed312%clnt|r
+- Center on last notification(s). 
+
+|Cfffed312%capt|r
+- Center on the unit with the active portrait.
+
+|Cfffed312Shift + Select Unit|r
+- Add/Remove unit from current selection.
+
+|Cfffed312Ctrl + Select Unit / Double-Click Unit|r
+- Select all units of that type in the game view.
+
+|Cfffed312Mouse Wheel Up / Page Up|r
+- Lower and zoom in the game camera.
+
+|Cfffed312Mouse Wheel Down / Page Down|r
+- Raise and zoom out the game camera.
+
+|Cfffed312%rocl|r
+- Rotate camera to the left.
+
+|Cfffed312%rocr|r
+- Rotate camera to the right.
+
+|Cfffed312Print Scrn|r
+- Save an image of the screen to a file in your Warcraft III directory.
+
+|Cfffed312%TMtr|r
+- Toggle Minimap Terrain.
+
+|Cfffed312%TMcd|r
+- Toggle Minimap Creep Display.
+
+
+|Cffc5ff26OBSERVER COMMANDS|r
+
+|Cfffed312%THer|r
+- Toggle the Heroes Panel on/off.
+
+|Cfffed312%TSta|r
+- Toggle the Statistics Panel on/off.
+
+|Cfffed312%TPUQ|r
+- Toggle the Production/Units Queue on/off.
+
+|Cfffed312%TSel|r
+- Toggle the Selection Panel on/off.
+
+|Cfffed312%TMap|r
+- Toggle the Minimap Panel on/off.
+
+|Cfffed312%TToD|r
+- Toggle the Time of Day Indicator on/off.
+
+|Cfffed312%TAll|r
+- Toggle all Panels on/off.
+
+|Cfffed312%SPQM|r
+- Switch to Production Queue Mode
+
+|Cfffed312%SULM|r
+- Switch to Units List Mode
+
+|Cfffed312%TMtr|r
+- Toggle Minimap Terrain.
+
+|Cfffed312%TMcd|r
+- Toggle Minimap Creep Display.
+
+
+|Cffc5ff26REPLAY COMMANDS|r
+
+|Cfffed312%TRpl|r
+- Toggle the Replay Panel on/off.
+
+|Cfffed312%TPPl|r
+- Toggle Pause/Play.
+
+|Cfffed312%InGS|r
+- Increase game speed if unpaused.
+
+|Cfffed312%DeGS|r
+- Decrease game speed if unpaused.
+
+|Cfffed312%TFoW|r
+- Toggle the Fog Of War on/off.
+
+|Cfffed312%TAuC|r
+- Toggle the Auto-Camera on/off.

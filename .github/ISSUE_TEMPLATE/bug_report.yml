@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a conversion, data, or interface problem in W3x2lni Reforged.
+title: "[Bug]: "
+body:
+  - type: input
+    id: app_version
+    attributes:
+      label: W3x2lni Reforged version
+      description: Copy the version from the application or `w2l.exe version`.
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows and Warcraft III versions
+      description: Include the Warcraft III / World Editor build if known.
+      placeholder: Windows 11; Warcraft III 3.0.1.24342
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does the problem occur?
+      options:
+        - LNI export
+        - OBJ conversion / rebuild
+        - SLK conversion / optimization
+        - Game-data extraction / import
+        - GUI / report window
+        - Launch / crash
+        - Another workflow
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result, and actual result
+      description: Include your command or GUI action, important settings, selected dataset, and any editor extensions or plugins used.
+      placeholder: |
+        1. Open ...
+        2. Convert using ...
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Full conversion report or crash log
+      description: Paste the report using Copy all, or attach log/report.log. For a crash, attach the corresponding file from log/error. Plain text is more useful than a cropped screenshot.
+      render: text
+  - type: textarea
+    id: sample
+    attributes:
+      label: Example map or additional context
+      description: A small map that reproduces the problem is useful if you can share it. ZIP attachments and screenshots can be added here.

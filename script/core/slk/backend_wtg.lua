@@ -40,22 +40,31 @@ local arg_type_map = {
 
 
 local function pack(fmt, ...)
-    hex[#hex+1] = fmt:pack(...)
+    hex[#hex+1] = ('<' .. fmt):pack(...)
 end
 
 local function pack_head()
     pack('c4', 'WTG!')
     if wtg.format_version then
-        pack('LLLLLL'
+        local deleted_maps = wtg.deleted_maps or {}
+        local deleted_libraries = wtg.deleted_libraries or {}
+        assert(#deleted_maps == wtg.unknown2 and #deleted_libraries == wtg.unknown4,
+            'WTG deleted map/library counts do not match their IDs')
+        pack('I4I4I4I4'
             , 0x80000004
             , 7
             , wtg.unknown1
-            , wtg.unknown2
-            , wtg.unknown3
-            , wtg.unknown4
+            , #deleted_maps
         )
+        for _, id in ipairs(deleted_maps) do
+            pack('I4', id)
+        end
+        pack('I4I4', wtg.unknown3, #deleted_libraries)
+        for _, id in ipairs(deleted_libraries) do
+            pack('I4', id)
+        end
     else
-        pack('L', 7)
+        pack('I4', 7)
     end
 end
 
@@ -73,21 +82,21 @@ local function pack_counts()
         end
     end
 
-    pack('LL', #wtg.categories, 0)
-    pack('LL', trigger_count, 0)
-    pack('LL', comment_count, 0)
-    pack('LL', script_count, 0)
-    pack('LL', #wtg.vars, 0)
-    pack('LL'
+    pack('I4I4', #wtg.categories, 0)
+    pack('I4I4', trigger_count, 0)
+    pack('I4I4', comment_count, 0)
+    pack('I4I4', script_count, 0)
+    pack('I4I4', #wtg.vars, 0)
+    pack('I4I4'
         , wtg.unknown5
         , wtg.unknown6
     )
 end
 
 local function pack_category()
-    pack('l', #wtg.categories)
+    pack('i4', #wtg.categories)
     for _, cate in ipairs(wtg.categories) do
-        pack('lzl', cate.id, cate.name, cate.comment)
+        pack('i4zi4', cate.id, cate.name, cate.comment)
     end
 end
 
@@ -109,7 +118,7 @@ local function pack_var(var)
             value = v
         end
     end
-    pack('zzllllz'
+    pack('zzi4i4i4i4z'
         , name
         , type
         , unknow
@@ -120,7 +129,7 @@ local function pack_var(var)
     )
 
     if wtg.format_version then
-        pack('LL'
+        pack('I4I4'
             , var.id
             , var.category
         )
@@ -128,7 +137,7 @@ local function pack_var(var)
 end
 
 local function pack_vars()
-    pack('ll', 2, #wtg.vars)
+    pack('i4i4', 2, #wtg.vars)
     for i = 1, #wtg.vars do
         pack_var(wtg.vars[i])
     end
@@ -150,25 +159,24 @@ local function pack_arg(arg)
     if type == CONSTANT then
         value = w2l:load_wts(wts, value, 299, lang.script.TEXT_TOO_LONG_IN_WTG)
     end
-    pack('lz', arg_type_map[type], value)
+    pack('i4z', arg_type_map[type], value)
     if type == CALL then
-        pack('l', 1)
+        pack('i4', 1)
         pack_eca(arg)
     else
-        pack('l', 0)
+        pack('i4', 0)
     end
     if array then
-        pack('l', 1)
+        pack('i4', 1)
         pack_arg(arg[3])
     else
-        pack('l', 0)
+        pack('i4', 0)
     end
 end
 
 local arg_count = {}
 local function get_ui_arg_count(ui)
-    local name = ui.name
-    if not arg_count[name] then
+    if not arg_count[ui] then
         local count = 0
         if ui.args then
             for _, arg in ipairs(ui.args) do
@@ -177,9 +185,9 @@ local function get_ui_arg_count(ui)
                 end
             end
         end
-        arg_count[name] = count
+        arg_count[ui] = count
     end
-    return arg_count[name]
+    return arg_count[ui]
 end
 
 local function pack_args(ui, eca)
@@ -205,7 +213,7 @@ local function pack_list(lists, root)
             child_count = child_count + #lists[i] - 2
         end
     end
-    pack('l', child_count)
+    pack('i4', child_count)
     local child_id = -1
     for i = 3, #lists do
         if not lists[i][2] and type_map[lists[i][1]] then
@@ -247,24 +255,24 @@ function pack_eca(eca, child_id, eca_type)
         end
     end
     if child_id then
-        pack('llzl', type_map[type], child_id, name, enable)
+        pack('i4i4zi4', type_map[type], child_id, name, enable)
     else
-        pack('lzl', type_map[type], name, enable)
+        pack('i4zi4', type_map[type], name, enable)
     end
     pack_args(ui, eca)
     pack_list(eca)
 end
 
 local function pack_trigger(trg)
-    pack('zzl'
+    pack('zzi4'
         , trg.name
         , trg.des
         , trg.type
     )
     if wtg.format_version then
-        pack('L', trg.id)
+        pack('I4', trg.id)
     end
-    pack('lllll'
+    pack('i4i4i4i4i4'
         , trg.enable
         , trg.wct
         , trg.close
@@ -275,14 +283,14 @@ local function pack_trigger(trg)
 end
 
 local function pack_triggers()
-    pack('l', #wtg.triggers)
+    pack('i4', #wtg.triggers)
     for i = 1, #wtg.triggers do
         pack_trigger(wtg.triggers[i], i)
     end
 end
 
 local function pack_category_in_element(cat)
-    pack('llzllL'
+    pack('i4i4zi4i4I4'
         , 4
         , cat.id
         , cat.name
@@ -293,7 +301,7 @@ local function pack_category_in_element(cat)
 end
 
 local function pack_var_in_element(var)
-    pack('LLzL'
+    pack('I4I4zI4'
         , 64
         , var.id
         , var[1]
@@ -303,17 +311,17 @@ end
 
 local function pack_trigger_in_element(trg)
     if trg.type == 0 then
-        pack('L', 8)
+        pack('I4', 8)
     elseif trg.wct == 1 then
-        pack('L', 32)
+        pack('I4', 32)
     else
-        pack('L', 16)
+        pack('I4', 16)
     end
     pack_trigger(trg)
 end
 
 local function pack_elements()
-    pack('Lllzlll'
+    pack('I4i4i4zi4i4i4'
         , 1 + #wtg.objs
         , wtg.unknown7
         , wtg.unknown8
@@ -339,6 +347,7 @@ return function (w2l_, wtg_, wts_)
     wts = wts_
     state = w2l:frontend_trg()
     hex = {}
+    arg_count = {}
 
     pack_head()
     if wtg.format_version then

@@ -2,6 +2,25 @@ local lang = require 'lang'
 local os_clock = os.clock
 local w2l
 
+local function save_object_files(w2l, type, data, wts)
+    local filename = w2l.info.obj[type]
+    local content = w2l:backend_obj(type, data, wts)
+    if content and #content > 0 then
+        w2l:file_save('map', filename, content)
+    end
+    if type ~= 'misc' and data then
+        for _, obj in pairs(data) do
+            if obj._skin_version then
+                local skin = w2l:backend_obj(type, data, wts, true)
+                if skin and #skin > 0 then
+                    w2l:file_save('map', filename:gsub('^war3map%.', 'war3mapskin.'), skin)
+                end
+                break
+            end
+        end
+    end
+end
+
 local function to_lni(w2l, slk)
     --转换物编
     local count = 0
@@ -26,20 +45,21 @@ local function to_obj(w2l, slk)
     --转换物编
     local count = 0
     for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'doodad', 'destructable', 'misc'} do
-        local filename = w2l.info.obj[type]
         count = count + 1
         local data = slk[type]
         w2l.progress:start(count / 8)
-        local content = w2l:backend_obj(type, data, slk.wts)
+        save_object_files(w2l, type, data, slk.wts)
         w2l.progress:finish()
-        if content and #content > 0 then
-            w2l:file_save('map', filename, content)
-        end
     end
 
     local content = w2l:backend_txtlni(slk['txt'])
     if content then
         w2l:file_save('table', 'txt', content)
+    end
+    if w2l.backend_profile_txt then
+        for filename, content in pairs(w2l:backend_profile_txt(slk)) do
+            w2l:file_save('map', filename, content)
+        end
     end
 end
 
@@ -266,24 +286,38 @@ local function to_slk(w2l, slk)
     for _, filename in ipairs(w2l.info.txt) do
         w2l:file_save('map', filename, '')
     end
+    for _, filename in ipairs(w2l.info.txt_optional or {}) do
+        w2l:file_save('map', filename, '')
+    end
     if w2l:isreforge() then
         for _, filename in ipairs(w2l.info.reforge) do
             w2l:file_save('map', filename, '')
         end
     end
-    local txt = w2l:backend_txt(slk, report, object)
+    for _, filenames in pairs(w2l.info.profile_strings or {}) do
+        for _, filename in ipairs(filenames) do
+            if w2l:keydata()[filename] then w2l:file_save('map', filename, '') end
+        end
+    end
+    local txt, skin_files = w2l:backend_txt(slk, report, object)
     for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'destructable', 'doodad'} do
         if txt[type] then
             w2l:file_save('map', w2l.info.txt_out[type], txt[type])
         end
     end
+    for filename, content in pairs(skin_files or {}) do
+        w2l:file_save('map', filename, content)
+    end
+    -- Alternate skin names live in residual TXT records, not binary objects.
+    -- Rebuild their native localization profiles without changing where the
+    -- ordinary unit/item/ability names above are written.
+    for filename, content in pairs(w2l:backend_profile_txt(slk, {localization_only = true})) do
+        w2l:file_save('map', filename, content)
+    end
 
     for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'destructable', 'doodad', 'misc'} do
         local data = object[type] or slk[type]
-        local content = w2l:backend_obj(type, data, slk.wts)
-        if content and #content > 0 then
-            w2l:file_save('map', w2l.info.obj[type], content)
-        end
+        save_object_files(w2l, type, data, slk.wts)
     end
 
     local content = w2l:backend_extra_txt(slk['txt'], slk)
@@ -316,6 +350,9 @@ local function clean_file(w2l, slk)
         for _, filename in pairs(w2l.info.txt) do
             w2l:file_remove('map', filename)
         end
+        for _, filename in pairs(w2l.info.txt_optional or {}) do
+            w2l:file_remove('map', filename)
+        end
         for type, names in pairs(w2l.info.slk) do
             for _, filename in pairs(names) do
                 w2l:file_remove('map', filename)
@@ -324,6 +361,9 @@ local function clean_file(w2l, slk)
     end
     for _, filename in pairs(w2l.info.obj) do
         w2l:file_remove('map', filename)
+        if filename:match('^war3map%.w3') then
+            w2l:file_remove('map', filename:gsub('^war3map%.', 'war3mapskin.'))
+        end
     end
     for ttype, filename in pairs(w2l.info.lni) do
         w2l:file_remove('table', ttype)

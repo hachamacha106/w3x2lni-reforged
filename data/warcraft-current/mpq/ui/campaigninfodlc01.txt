@@ -1,0 +1,98 @@
+[Index]
+// The "CampaignList" key defines the campaigns which will
+// appear on the campaign selection screen.  The values listed
+// here are the section names of the specific campaign mission data
+// below.  The order of these values is significant, as that is the
+// order in which they will appear on the campaign selection screen.
+
+CampaignList="","","","","HumanRe","UndeadRe"
+
+// The sections below make up the campaign data for each specific
+// campaign.  Each mission entry is made up of 3 comma-separated
+// strings.  In order they are: Header, Mission Name, Map Filename.
+// You can have up to 128 missions in a given campaign, but putting 
+// more than 15 will make a scrollbar appear to see the rest.
+//
+// Each campaign section can also have three cinematics associated
+// with them: Intro Cinematic, Open Cinematic, and End Cintematic.
+// The cinematic entries follow a similar pattern as the mission
+// entries: Header, Cinematic Name, Cinematic Filename.
+//
+// Using the "DefaultOpen" key, you can specify that this campaign
+// should be initially open and selectable by a new user.
+//
+// You can specify which model to use for the background, using the
+// "Background" key.  The value specified must be an entry in the
+// war3skins.txt file. Realize that this value is processed using the
+// expansion naming convention (i.e. V0, V1, etc).  You should also set 
+// the fog parameters using the "BackgroundFogXXX" keys.
+//
+// The racial cursor for the campaign can be set using the "Cursor"
+// key.  The values are as follows: Human = 0, Orc = 1, Undead = 2, 
+// Night Elf = 3.
+//      
+// Finally, you can set which ambient sound to play on this screen using
+// the "AmbientSound" key.  The value specified must be an entry in
+// the AmbienceSounds.slk file.
+
+[HumanRE]
+Header="CAMP_HUMANRE_HEADER"
+Name="CAMP_HUMANRE_NAME"
+Expansion="DLC01"
+DefaultOpen=1
+Background="HumanREBackdrop"
+BackgroundFogStyle=0
+BackgroundFogColor=255,178,178,204
+BackgroundFogDensity=0.5
+BackgroundFogStart=0
+BackgroundFogEnd=9000
+BackgroundFogHeightStart=0
+BackgroundFogHeightEnd=0
+BackgroundFogLinearStart=10000
+BackgroundFogLinearEnd=10000
+BackgroundFogMaxLinearDensity=1
+BackgroundFogDrawOverSky=0
+Cursor=0
+AmbientSound="HumanGlueScreenLoop"
+EnableFUE=1
+IntroCinematic=""
+OpenCinematic="CAMP_CINEMATIC","CAMP_CIN_INTRORE","IntroRE"
+EndCinematic=""
+Mission0="CAMP_CHAPTER_1","CAMP_MAP_HUMANRE01","Campaign/ForsakenKingdom/HumanRE01.w3xd"
+Mission1="CAMP_CHAPTER_2","CAMP_MAP_HUMANRE02","Campaign/ForsakenKingdom/HumanRE02.w3xd"
+Mission2="CAMP_INTERLUDE","CAMP_MAP_HUMANRE02INTERLUDE","Campaign/ForsakenKingdom/HumanRE02Interlude.w3xd"
+Mission3="CAMP_CHAPTER_3","CAMP_MAP_HUMANRE03","Campaign/ForsakenKingdom/HumanRE03.w3xd"
+Mission4="CAMP_CHAPTER_4","CAMP_MAP_HUMANRE04","Campaign/ForsakenKingdom/HumanRE04.w3xd"
+
+[UndeadRE]
+Header="CAMP_UNDEADRE_HEADER"
+Name="CAMP_UNDEADRE_NAME"
+Expansion="DLC01"
+DefaultOpen=0
+Background="UndeadREBackdrop"
+BackgroundFogStyle=0
+BackgroundFogColor=255,178,178,204
+BackgroundFogDensity=0.5
+BackgroundFogStart=0
+BackgroundFogEnd=9000
+BackgroundFogHeightStart=0
+BackgroundFogHeightEnd=0
+BackgroundFogLinearStart=10000
+BackgroundFogLinearEnd=10000
+BackgroundFogMaxLinearDensity=1
+BackgroundFogDrawOverSky=0
+Cursor=4
+AmbientSound="ExpansionUndeadGlueScreenLoop"
+EnableFUE=0
+IntroCinematic=""
+OpenCinematic=""
+EndCinematic="CAMP_CINEMATIC","CAMP_CIN_OUTRORE","OutroRE"
+Mission0="CAMP_CHAPTER_1","CAMP_MAP_UNDEADRE01","Campaign/ForsakenKingdom/UndeadRE01.w3xd"
+Mission1="CAMP_CHAPTER_2","CAMP_MAP_UNDEADRE02","Campaign/ForsakenKingdom/UndeadRE02.w3xd"
+Mission2="CAMP_INTERLUDE","CAMP_MAP_UNDEADRE03INTERLUDE","Campaign/ForsakenKingdom/UndeadRE03Interlude.w3xd"
+Mission3="CAMP_CHAPTER_3","CAMP_MAP_UNDEADRE03","Campaign/ForsakenKingdom/UndeadRE03a.w3xd"
+
+
+
+
+

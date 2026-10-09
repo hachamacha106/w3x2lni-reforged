@@ -1,57 +1,204 @@
-name: build
-on: [push, pull_request]
+name: Reforged release checks
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reforged-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+
 jobs:
-  build:
-    runs-on: windows-latest
+  package:
+    name: Package and compatibility tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      asset_name: ${{ steps.metadata.outputs.asset_name }}
+      release_tag: ${{ steps.metadata.outputs.tag }}
+      package_sha256: ${{ steps.checksum.outputs.sha256 }}
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules : recursive
+      - name: Check out the exact source and pinned dependencies
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Validate release metadata and tag
+        id: metadata
+        run: python3 -B test/release/release_artifact.py metadata
+      - name: Verify committed-source and release-packaging safeguards
+        run: python3 -B test/compat/test_package_release.py
+      - name: Download the pinned official Windows runtime
+        run: |
+          mkdir -p build/release
+          curl --fail --location --retry 3 --output build/upstream-runtime.zip \
+            https://github.com/sumneko/w3x2lni/releases/download/2.7.3/w3x2lni-2.7.3.zip
+          python3 -B test/release/release_artifact.py upstream build/upstream-runtime.zip
+      - name: Build the Linux test dependencies
+        run: |
+          python3 -B test/compat/build_runtime.py "$PWD/build/compat-runtime"
+          python3 -B test/compat/mpq_archive.py build 3rd/stormlib "$PWD/build/mpq-runtime"
+      - name: Produce the initial map-validation fixture
+        run: |
+          export W2L_TEST_RUNTIME="$PWD/build/compat-runtime"
+          python3 -B test/compat/user_map.py \
+            --map test/fixtures/HiTestMapFromWorldEditor.w3x \
+            --library "$PWD/build/mpq-runtime/libstorm.so" \
+            --output "$PWD/build/seed-map-validation"
+      - name: Build a candidate from one verified byte snapshot
+        run: |
+          tag_arguments=()
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag_arguments=(--expected-tag "$GITHUB_REF_NAME")
+          fi
+          python3 -B make/package-release.py \
+            --upstream build/upstream-runtime.zip \
+            --output build/candidate.zip \
+            --map-validation build/seed-map-validation \
+            "${tag_arguments[@]}"
+      - name: Run all 14 suites from the extracted candidate
+        run: |
+          python3 -B test/compat/verify_package.py \
+            --archive build/candidate.zip \
+            --workdir build/verified \
+            --runtime "$PWD/build/compat-runtime" \
+            --stormlib "$PWD/build/mpq-runtime/libstorm.so" \
+            --source "$PWD" \
+            --upstream build/upstream-runtime.zip
+      - name: Build the final package with its validation evidence
+        env:
+          RELEASE_ASSET: ${{ steps.metadata.outputs.asset_name }}
+        run: |
+          tag_arguments=()
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag_arguments=(--expected-tag "$GITHUB_REF_NAME")
+          fi
+          python3 -B make/package-release.py \
+            --upstream build/upstream-runtime.zip \
+            --output "build/release/$RELEASE_ASSET" \
+            --map-validation build/verified/map-validation \
+            --validation build/verified/VALIDATION.json \
+            "${tag_arguments[@]}"
+      - name: Independently verify the final ZIP and write its checksum
+        id: checksum
+        env:
+          RELEASE_ASSET: ${{ steps.metadata.outputs.asset_name }}
+        run: |
+          python3 -B test/release/release_artifact.py checksum "build/release/$RELEASE_ASSET"
+          python3 -B test/release/release_artifact.py verify \
+            --archive "build/release/$RELEASE_ASSET" \
+            --checksum "build/release/$RELEASE_ASSET.sha256"
+      - name: Upload the exact package for Windows testing and release
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reforged-release-package
+          path: build/release/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Preserve Linux validation results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reforged-linux-validation
+          path: |
+            build/verified/VALIDATION.json
+            build/verified/map-validation/RESULTS.json
+            build/mpq-runtime/build.log
+          if-no-files-found: warn
+          retention-days: 30
 
-    - uses: actboy168/setup-luamake@master
+  windows-smoke:
+    name: Native Windows CLI smoke tests
+    needs: package
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Check out smoke-test helpers
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Download the exact Linux-validated package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reforged-release-package
+          path: build/download
+          digest-mismatch: error
+      - name: Exercise the packaged EXE and DLLs on Windows
+        env:
+          RELEASE_ASSET: ${{ needs.package.outputs.asset_name }}
+          EXPECTED_PACKAGE_SHA256: ${{ needs.package.outputs.package_sha256 }}
+        shell: pwsh
+        run: |
+          python -B test/release/windows_smoke.py --archive "build/download/$env:RELEASE_ASSET" --checksum "build/download/$env:RELEASE_ASSET.sha256" --expected-sha256 "$env:EXPECTED_PACKAGE_SHA256" --workdir build/windows-smoke
+      - name: Preserve native Windows test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reforged-windows-validation
+          path: build/windows-smoke/evidence
+          if-no-files-found: warn
+          retention-days: 30
 
-    - run: luamake
-    - run: ./bin/w3x2lni-lua.exe make/make.lua ci
-    - uses: actions/upload-artifact@v4
-      with:
-        name: w3x2lni
-        path: |
-          bin
-          data
-          script
-          template
-          config.ini
-          LICENSE.txt
-          README.md
-          w2l.exe
-          w3x2lni.exe
-
-    - name: Set version from tag
-      if: startsWith(github.ref, 'refs/tags/')
-      id: version
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $version = $env:GITHUB_REF_NAME
-        echo "version=$version" >> $env:GITHUB_OUTPUT
-        echo "VERSION=$version" >> $env:GITHUB_ENV
-
-    - name: Create release zip
-      if: startsWith(github.ref, 'refs/tags/')
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $paths = @('bin','data','script','template','config.ini','LICENSE.txt','README.md','w2l.exe','w3x2lni.exe')
-        $dest = "w3x2lni-$env:VERSION.zip"
-        if (Test-Path $dest) { Remove-Item $dest -Force }
-        Compress-Archive -Path $paths -DestinationPath $dest -Force
-
-    - name: Publish release assets
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: ${{ steps.version.outputs.version }}
-        generate_release_notes: true
-        files: |
-          w3x2lni-${{ steps.version.outputs.version }}.zip
+  draft-release:
+    name: Create or update the draft release
+    needs: [package, windows-smoke]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.repository == 'hachamacha106/w3x2lni-Reforged'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the tagged release notes
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Download the tested package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reforged-release-package
+          path: build/release
+          digest-mismatch: error
+      - name: Download the Windows result
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reforged-windows-validation
+          path: build/windows-validation
+          digest-mismatch: error
+      - name: Confirm both jobs tested the asset being attached
+        env:
+          RELEASE_ASSET: ${{ needs.package.outputs.asset_name }}
+          EXPECTED_PACKAGE_SHA256: ${{ needs.package.outputs.package_sha256 }}
+        run: |
+          python3 -B test/release/release_artifact.py metadata
+          python3 -B test/release/release_artifact.py verify \
+            --archive "build/release/$RELEASE_ASSET" \
+            --checksum "build/release/$RELEASE_ASSET.sha256" \
+            --expected-sha256 "$EXPECTED_PACKAGE_SHA256" \
+            --windows-report build/windows-validation/WINDOWS_SMOKE.json
+      - name: Attach assets to a draft without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -B test/release/create_draft.py \
+            --asset-directory build/release \
+            --windows-report build/windows-validation/WINDOWS_SMOKE.json

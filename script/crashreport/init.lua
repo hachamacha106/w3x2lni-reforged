@@ -2,9 +2,14 @@ local messagebox = require 'ffi.messagebox'
 local lang = require 'share.lang'
 local cl = require 'share.changelog'
 local fs = require 'bee.filesystem'
+local brand = require 'share.brand'
 
 local root = fs.absolute(fs.path '..')
 local errmessage = io.stdin:read 'a'
+-- The bundled Windows Lua runtime terminates each stderr fragment with a NUL.
+-- MessageBoxW stops at the first one, hiding the actual error after the prefix.
+-- Keep the complete diagnostic readable in both the saved log and the dialog.
+errmessage = errmessage:gsub('\0', '\n')
 
 local ok, gl = pcall(require, 'share.gitlog')
 if ok then
@@ -15,6 +20,7 @@ end
 
 local log = {}
 log[#log+1] = os.date('Date: %Y-%m-%d %H:%M:%S')
+log[#log+1] = 'Product: ' .. brand.name
 log[#log+1] = string.format('Version: %s', cl[1].version)
 log[#log+1] = string.format('Commit: %s', gl)
 log[#log+1] = 'Stack:'

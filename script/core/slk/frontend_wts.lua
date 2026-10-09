@@ -53,14 +53,14 @@ local function search_string(buf)
 end
 
 return function (w2l, buf)
-    local tbl = { mark = {} }
+    local tbl = { mark = {}, original_text = {}, text_index = {} }
     if not buf then
         return tbl
     end
     local suc, result = xpcall(search_string, debug.traceback, buf)
     if not suc then
         w2l.messager.report(lang.report.ERROR, 1, lang.report.WTS_SYNTAX_ERROR, result:match '[\r\n]+(.+)$')
-        return tbl
+        error('Cannot safely convert invalid war3map.wts: ' .. result, 0)
     end
     for _, t in ipairs(result) do
         local index, text = t.index, t.text
@@ -68,6 +68,28 @@ return function (w2l, buf)
             w2l.messager.report(lang.report.WARN, 2, lang.report.WTS_ESCAPE_WARN, text:sub(1, 1000))
         end
         tbl[index] = t
+        tbl.original_text[text] = true
+    end
+    -- Lua can build TRIGSTR references dynamically. Current editor conversation
+    -- files also reference this string table, outside the JASS/object readers.
+    -- LNI needs the source text for a later rebuild of long fields, including
+    -- valid literal braces. Keep the original IDs in all these cases.
+    if (w2l.setting and w2l.setting.mode == 'lni')
+        or (w2l.input_ar and (w2l:file_load('map', 'war3map.lua')
+        or w2l:file_load('map', 'scripts\\war3map.lua')
+        or w2l:file_load('scripts', 'war3map.lua')
+        or w2l:file_load('map', 'conversation.json'))) then
+        local last = 0
+        for _, t in ipairs(result) do
+            tbl.mark[t.index + 1] = t.text
+            last = math.max(last, t.index + 1)
+        end
+        for index, text in pairs(tbl.mark) do
+            if not tbl.text_index[text] or index < tbl.text_index[text] then
+                tbl.text_index[text] = index
+            end
+        end
+        tbl.next_index = last + 1
     end
     return tbl
 end

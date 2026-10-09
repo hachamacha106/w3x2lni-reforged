@@ -4,6 +4,7 @@ local timer = require 'gui.timer'
 local ev = require 'gui.event'
 local ui = require 'gui.new.template'
 local fs = require 'bee.filesystem'
+local brand = require 'share.brand'
 
 window = {}
 
@@ -44,74 +45,52 @@ local function create_mainview(win)
         style = { Padding = 1 },
         ui.container {
             id = 'caption',
-            style = { Height = 40, FlexDirection = 'row', JustifyContent = 'space-between' },
+            style = { Height = 40, FlexShrink = 0, FlexDirection = 'row' },
             bind = {
                 color = 'theme'
             },
             ui.label {
                 id = 'title',
-                style = { Width = 200 },
+                style = { FlexGrow = 1, MarginLeft = 6 },
                 align = 'start',
                 font = { name = 'Constantia', size = 24, weight = 'bold' },
                 bind = {
                     text = 'title'
                 }
-            },
-            ui.container {
-                id = 'close',
-                style = { Margin = 0, Width = 40 },
-                color_hover = '#BE3246',
-                bind = {
-                    color = 'theme'
-                }
             }
         }
     }
     
-    local view, data, element = ui.create(template, {
-        title = 'W3x2Lni',
+    local view, data = ui.create(template, {
+        title = brand.name,
         theme = '#00ADD9',
     })
     
     ev.on('update theme', function(color, title)
         data.theme = color
-        data.title = title
+        -- Keep the original mode token on the event bus; conversion settings
+        -- use it to select the right page independently of the product name.
+        data.title = brand.window_title(title)
+        win:settitle(data.title)
     end)
-    
-    element.caption:setmousedowncanmovewindow(true)
-    element.title:setmousedowncanmovewindow(true)
-
-    function element.close:onmousedown()
-        win:close()
-    end
-    local canvas = gui.Canvas.createformainscreen{width=40, height=40}
-    local painter = canvas:getpainter()
-    painter:setstrokecolor('#000000')
-    painter:beginpath()
-    painter:moveto(15, 15)
-    painter:lineto(25, 25)
-    painter:moveto(15, 25)
-    painter:lineto(25, 15)
-    painter:closepath()
-    painter:stroke()
-    function element.close:ondraw(painter, dirty)
-        painter:drawcanvas(canvas, {x=0, y=0, width=40, height=40})
-    end
     return view
 end
 
 function window:create(t)
-    local win = gui.Window.create { frame = false }
+    -- Use the native frame for resize borders, maximize/restore and the system menu.
+    local win = gui.Window.create { frame = true }
     function win.onclose()
         gui.MessageLoop.quit()
     end
+    -- The unchanged native extension locates the window by this initial title.
     win:settitle('w3x2lni')
     ext.register_window('w3x2lni')
     ext.set_icon((fs.exe_path():parent_path() / 'w3x2lni.ico'):string())
     win:sethasshadow(true)
-    win:setresizable(false)
-    win:setmaximizable(false)
-    win:setminimizable(false)
+    win:setresizable(true)
+    win:setmaximizable(true)
+    win:setminimizable(true)
+    win:setcontentsizeconstraints({ width = 400, height = 600 }, {})
     win:setcontentview(create_mainview(win))
     win:setcontentsize { width = t.width, height = t.height }
     win:center()
@@ -138,7 +117,7 @@ function window:show_page(name)
 end
 
 local view = window:create {
-    width = 400, 
+    width = 720,
     height = 600,
 }
 

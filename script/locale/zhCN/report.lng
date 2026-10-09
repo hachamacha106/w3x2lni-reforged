@@ -54,6 +54,8 @@
 保留野怪建筑
 [RETAIN_RANDOM_ITEM]
 保留可随机物品
+[RETAIN_ALL_ITEMS]
+保留所有物品：脚本可随机选择未启用随机选择的物品
 [SYNTAX_ERROR]
 脚本语法错误，可能是地图保存失败了。
 [TEXT_CANT_ESCAPE_IN_TXT]
@@ -190,3 +192,9 @@
 魔法书 '%s' [%s] 会被合并
 [ERROR_ORDER]
 基础命令ID '%s' 不存在
+[RETAIN_UNKNOWN_DOO]
+无法完整读取地形装饰物文件，已保留全部对象以防止误删。
+[RETAIN_UNKNOWN_SCRIPT]
+无法完整分析脚本中的对象引用，已保留全部对象以防止误删。
+[RETAIN_UNKNOWN_OBJECT_REFERENCES]
+保留的未知对象数据可能包含对象引用，已保留全部对象以防止误删。

@@ -36,6 +36,28 @@ end
 
 local result = {}
 
+-- Optional in older game builds. Keep these source tables with the export so
+-- rebuilding a current dataset does not lose newly introduced profile data.
+local supplemental_files = {
+    'Scripts\\Common.ai',
+    'UI\\SkinMetaData.slk',
+    'UI\\WorldEditData.txt',
+    'UI\\MiscUI.txt',
+    'Units\\UpgradeEffectMetaData.slk',
+    'Units\\UnitWeaponsFunc.txt',
+    'Units\\UnitSkinStrings.txt',
+    'Units\\AbilitySkinStrings.txt',
+    'Units\\ItemSkinStrings.txt',
+    'Units\\UpgradeSkinStrings.txt',
+    'Units\\DestructableSkinStrings.txt',
+    'Units\\CommandFunc.txt',
+    'Units\\AbilityStatModifiers.txt',
+    'Units\\UnitAddons.txt',
+    'Units\\ItemAddons.txt',
+    'Units\\DestructableAddons.txt',
+    'Doodads\\DoodadSkinsAddons.txt',
+}
+
 local function extract_file(path, name)
     local r = war3:extractfile(name, path / name)
     result[name] = r or false
@@ -94,6 +116,11 @@ local function extract()
             for _, name in ipairs(w2l.info.reforge) do
                 extract_mpq(dir .. name)
             end
+            for _, name in ipairs(supplemental_files) do
+                if war3:readfile(dir .. name) then
+                    extract_mpq(dir .. name)
+                end
+            end
         end
     else
         for _, dirs in ipairs {
@@ -124,6 +151,11 @@ local function extract()
             end
             for _, name in ipairs(w2l.info.reforge) do
                 extract_casc(dirs, name)
+            end
+            for _, name in ipairs(supplemental_files) do
+                if war3:readfile(dirs[1] .. name) then
+                    extract_casc(dirs, name)
+                end
             end
         end
     end
@@ -269,6 +301,11 @@ return function ()
     io.save(output / 'version', table.concat(data_version, '\r\n'))
     local config = require 'share.config'
     config.global.data = war3.name
+    if war3.reforge then
+        config.global.data_ui = '${DATA}'
+        config.global.data_meta = '${DATA}'
+        config.global.data_wes = '${DATA}'
+    end
 
     w2l.progress:start(0.4)
     local slk = makefile(w2l, war3, 'Melee')

@@ -19,7 +19,7 @@ local mt = {}
 mt.__index = mt
 
 function mt:add(format, ...)
-    self.hexs[#self.hexs+1] = (format):pack(...)
+    self.hexs[#self.hexs+1] = ('<' .. format):pack(...)
 end
 
 function mt:current(key)
@@ -45,10 +45,13 @@ function mt:read_head(data, version)
     data.des        = self:get(lang.w3i.MAP_DESC)
     data.player_rec = self:get(lang.w3i.PLAYER_DESC)
     data.script_type= self:get(lang.w3i.SCRIPT_TYPE)
-    data.unknown_10 = self:get(lang.w3i.UNKNOWN_10)
-    data.unknown_11 = self:get(lang.w3i.UNKNOWN_11)
+    data.supported_graphics_modes = self:get(lang.w3i.SUPPORTED_GRAPHICS_MODES)
+    data.game_data_version = self:get(lang.w3i.GAME_DATA_VERSION)
 
     self:current(lang.w3i.CAMERA)
+    data.default_camera_zoom = self:get(lang.w3i.DEFAULT_CAMERA_ZOOM)
+    data.max_camera_zoom = self:get(lang.w3i.MAX_CAMERA_ZOOM)
+    data.min_camera_zoom = self:get(lang.w3i.MIN_CAMERA_ZOOM)
     for i = 1, 8 do
         data['camera_bound_' .. i] = self:get(lang.w3i.CAMERA_BOUND)[i]
     end
@@ -76,18 +79,24 @@ function mt:read_head(data, version)
                   | self:get(lang.w3i.MAP_MENU_MARK)            << 10
                   | self:get(lang.w3i.SHOW_WAVE_ON_CLIFF)       << 11
                   | self:get(lang.w3i.SHOW_WAVE_ON_ROLLING)     << 12
-                  | self:get(lang.w3i.UNKNOWN_1)                 << 13
-                  | self:get(lang.w3i.UNKNOWN_2)                 << 14
-                  | self:get(lang.w3i.UNKNOWN_3)                 << 15
-                  | self:get(lang.w3i.UNKNOWN_4)                 << 16
-                  | self:get(lang.w3i.UNKNOWN_5)                 << 17
-                  | self:get(lang.w3i.UNKNOWN_6)                 << 18
-                  | self:get(lang.w3i.UNKNOWN_7)                 << 19
-                  | self:get(lang.w3i.UNKNOWN_8)                 << 20
-                  | self:get(lang.w3i.UNKNOWN_9)                 << 21
+                  | self:get(lang.w3i.USE_TERRAIN_FOG)                 << 13
+                  | self:get(lang.w3i.REQUIRES_EXPANSION)                 << 14
+                  | self:get(lang.w3i.USE_ITEM_CLASSIFICATION)                 << 15
+                  | self:get(lang.w3i.USE_WATER_TINTING)                 << 16
+                  | self:get(lang.w3i.ACCURATE_PROBABILITY)                 << 17
+                  | self:get(lang.w3i.CUSTOM_ABILITY_SKINS)                 << 18
+                  | self:get(lang.w3i.DISABLE_DENY_ICON)                 << 19
+                  | self:get(lang.w3i.FORCE_DEFAULT_ZOOM)                 << 20
+                  | self:get(lang.w3i.FORCE_MAX_ZOOM)                 << 21
+                  | (self:get(lang.w3i.FORCE_MIN_ZOOM) or 0)     << 22
+                  | (self:get(lang.w3i.OVERRIDE_HD_WATER_COLOR) or 0) << 23
+                  | (self:get(lang.w3i.ALPHA_TILE_MINIMAP_COLOR) or 0) << 24
+                  | (self:get(lang.w3i.DYNAMIC_MINIMAP) or 0)    << 25
+                  | ((self:get(lang.w3i.UNKNOWN_FLAGS) or 0) & 0xFC000000)
 
     self:current(lang.w3i.LOADING_SCREEN)
     data.loading_screen_id       = self:get(lang.w3i.ID)
+    data.loading_screen_race_hud   = self:get(lang.w3i.LOADING_SCREEN_RACE_HUD)
     data.loading_screen_path     = self:get(lang.w3i.PATH)
     data.loading_screen_text     = self:get(lang.w3i.TEXT)
     data.loading_screen_title    = self:get(lang.w3i.TITLE)
@@ -110,6 +119,12 @@ function mt:read_head(data, version)
         data.fog_green   = self:get(lang.w3i.COLOR)[2]
         data.fog_blue    = self:get(lang.w3i.COLOR)[3]
         data.fog_alpha   = self:get(lang.w3i.COLOR)[4]
+        data.fog_height_start = self:get(lang.w3i.HEIGHT_START)
+        data.fog_height_end = self:get(lang.w3i.HEIGHT_END)
+        data.fog_linear_start = self:get(lang.w3i.LINEAR_START)
+        data.fog_linear_end = self:get(lang.w3i.LINEAR_END)
+        data.fog_max_opacity = self:get(lang.w3i.MAX_OPACITY)
+        data.fog_draw_over_sky = self:get(lang.w3i.DRAW_OVER_SKY)
 
         self:current(lang.w3i.ENVIRONMENT)
         data.weather_id        = self:get(lang.w3i.WEATHER)
@@ -119,6 +134,16 @@ function mt:read_head(data, version)
         data.water_green       = self:get(lang.w3i.WATER_COLOR)[2]
         data.water_blue        = self:get(lang.w3i.WATER_COLOR)[3]
         data.water_alpha       = self:get(lang.w3i.WATER_COLOR)[4]
+        data.water_min_opacity = self:get(lang.w3i.WATER_MIN_OPACITY)
+        data.water_max_opacity = self:get(lang.w3i.WATER_MAX_OPACITY)
+        data.water_reflectivity = self:get(lang.w3i.WATER_REFLECTIVITY)
+        data.water_emissivity = self:get(lang.w3i.WATER_EMISSIVITY)
+        data.water_edge_softness = self:get(lang.w3i.WATER_EDGE_SOFTNESS)
+        data.water_waves_displacement = self:get(lang.w3i.WATER_WAVES_DISPLACEMENT)
+        data.water_waves_normal_strength = self:get(lang.w3i.WATER_WAVES_NORMAL_STRENGTH)
+        data.water_tinting_color = self:get(lang.w3i.WATER_TINTING_COLOR)
+        data.water_env_reflectivity = self:get(lang.w3i.WATER_ENV_REFLECTIVITY)
+        data.minimap_alpha_tile_color = self:get(lang.w3i.MINIMAP_ALPHA_TILE_COLOR)
     end
 end
 
@@ -134,14 +159,15 @@ function mt:read_player(data)
         player.id             = self:get(lang.w3i.PLAYER)
         player.type           = self:get(lang.w3i.TYPE)
         player.race           = self:get(lang.w3i.RACE)
+        player.hud_skin       = self:get(lang.w3i.HUD_SKIN)
         player.start_position = self:get(lang.w3i.FIX_START_POSITION)
         player.name           = self:get(lang.w3i.NAME)
         player.start_x        = self:get(lang.w3i.START_POSITION)[1]
         player.start_y        = self:get(lang.w3i.START_POSITION)[2]
         player.ally_low_flag  = pack_flag(self:get(lang.w3i.ALLY_LOW_FLAG))
         player.ally_high_flag = pack_flag(self:get(lang.w3i.ALLY_HIGH_FLAG))
-        player.unknown_12     = self:get(lang.w3i.UNKNOWN_12)
-        player.unknown_13     = self:get(lang.w3i.UNKNOWN_13)
+        player.enemy_low_priority_flags     = self:get(lang.w3i.ENEMY_LOW_PRIORITY_FLAGS)
+        player.enemy_high_priority_flags     = self:get(lang.w3i.ENEMY_HIGH_PRIORITY_FLAGS)
     end
 end
 
@@ -171,7 +197,11 @@ function mt:read_force(data)
                          | self:get(lang.w3i.SHARE_VISIBLE)        << 3
                          | self:get(lang.w3i.SHARE_CONTROL)     << 4
                          | self:get(lang.w3i.SHARE_ADVANCE) << 5
-        if i == 1 then
+                         | ((self:get(lang.w3i.UNKNOWN_FLAGS) or 0) & 0xFFFFFFC4)
+        local unused_players = self:get(lang.w3i.UNUSED_PLAYER_LIST)
+        if unused_players then
+            force.player_flag = pack_flag(self:get(lang.w3i.PLAYER_LIST)) | pack_flag(unused_players)
+        elseif i == 1 then
             force.player_flag = pack_flag(self:get(lang.w3i.PLAYER_LIST)) | unuse_player_flag
         else
             force.player_flag = pack_flag(self:get(lang.w3i.PLAYER_LIST))
@@ -217,7 +247,7 @@ function mt:read_randomgroup(data)
         local group = {}
         data.groups[i] = group
         self:current(lang.w3i.RANDOM_GROUP..i)
-        group.id = i - 1
+        group.id = self:get 'ID' or i - 1
         group.name = self:get(lang.w3i.RANDOM_GROUP_NAME)
         group.positions = self:get(lang.w3i.POSITION_TYPE)
         group.position_count = #group.positions
@@ -241,7 +271,7 @@ function mt:read_randomitem(data)
         local random_item = {}
         data.random_items[i] = random_item
         self:current(lang.w3i.RANDOM_ITEM..i)
-        random_item.id = i - 1
+        random_item.id = self:get 'ID' or i - 1
         random_item.name = self:get(lang.w3i.RANDOM_ITEM_NAME)
         random_item.sets = {}
         for i = 1, #self:get(lang.w3i.SETTING) do
@@ -263,47 +293,73 @@ function mt:read_randomitem(data)
 end
 
 function mt:add_head(data, version)
-    self:add('lll', version, data.map_ver, data.editor_ver)
-    if version >= 28 then
-        self:add('llll', table.unpack(data.war3_ver))
+    self:add('i4i4i4', version, data.map_ver, data.editor_ver)
+    if version >= 27 then
+        self:add('i4i4i4i4', table.unpack(data.war3_ver))
     end
     self:add('zzzz', data.map_name, data.author, data.des, data.player_rec)
 
     self:add('ffffffff', data.camera_bound_1, data.camera_bound_2, data.camera_bound_3, data.camera_bound_4, data.camera_bound_5, data.camera_bound_6, data.camera_bound_7, data.camera_bound_8)
 
-    self:add('llll', data.camera_complement_1, data.camera_complement_2, data.camera_complement_3, data.camera_complement_4)
+    self:add('i4i4i4i4', data.camera_complement_1, data.camera_complement_2, data.camera_complement_3, data.camera_complement_4)
 
-    self:add('lllc1', data.map_width, data.map_height, data.map_flag, data.map_main_ground_type)
+    self:add('i4i4I4c1', data.map_width, data.map_height, data.map_flag, data.map_main_ground_type)
 
     if version >= 25 then
-        self:add('lzzzz', data.loading_screen_id, data.loading_screen_path, data.loading_screen_text, data.loading_screen_title, data.loading_screen_subtitle)
+        self:add('i4', data.loading_screen_id)
+        if version >= 39 then
+            self:add('I4', data.loading_screen_race_hud)
+        end
+        self:add('zzzz', data.loading_screen_path, data.loading_screen_text, data.loading_screen_title, data.loading_screen_subtitle)
 
-        self:add('l', data.game_data_set)
+        self:add('i4', data.game_data_set)
 
         self:add('zzzz', data.prologue_screen_path, data.prologue_screen_text, data.prologue_screen_title, data.prologue_screen_subtitle)
 
-        self:add('lfffBBBB', data.terrain_fog, data.fog_start_z, data.fog_end_z, data.fog_density, data.fog_red, data.fog_green, data.fog_blue, data.fog_alpha)
+        self:add('i4fffBBBB', data.terrain_fog, data.fog_start_z, data.fog_end_z, data.fog_density, data.fog_red, data.fog_green, data.fog_blue, data.fog_alpha)
 
-        self:add('c4zc1', data.weather_id, data.sound_environment, data.light_environment)
+        if version >= 39 then
+            self:add('fffffI4', data.fog_height_start, data.fog_height_end,
+                data.fog_linear_start, data.fog_linear_end, data.fog_max_opacity,
+                data.fog_draw_over_sky)
+        end
+        self:add('c4', data.weather_id)
+        self:add('zc1', data.sound_environment, data.light_environment)
 
         self:add('BBBB', data.water_red, data.water_green, data.water_blue, data.water_alpha)
         if version >= 28 then
-            self:add('l', data.script_type:lower() == 'lua' and 1 or 0)
+            assert(data.script_type:lower() == 'lua' or data.script_type:lower() == 'jass',
+                'Unsupported war3map.w3i script language')
+            self:add('i4', data.script_type:lower() == 'lua' and 1 or 0)
         end
 
-        if version >= 31 then
-            self:add('l', data.unknown_10)
-            self:add('l', data.unknown_11)
+        if version >= 29 then
+            self:add('I4', data.supported_graphics_modes)
+        end
+        if version >= 30 then
+            self:add('I4', data.game_data_version)
+        end
+        if version >= 32 then
+            self:add('I4I4', data.default_camera_zoom, data.max_camera_zoom)
+            if version >= 33 then
+                self:add('I4', data.min_camera_zoom)
+            end
+        end
+        if version >= 39 then
+            self:add('I4I4I4I4I4I4I4I4I4I4', data.water_min_opacity, data.water_max_opacity,
+                data.water_reflectivity, data.water_emissivity, data.water_edge_softness,
+                data.water_waves_displacement, data.water_waves_normal_strength,
+                data.water_tinting_color, data.water_env_reflectivity, data.minimap_alpha_tile_color)
         end
     elseif version == 18 then
-        self:add('lzzz', data.loading_screen_id, data.loading_screen_text, data.loading_screen_title, data.loading_screen_subtitle)
+        self:add('i4zzz', data.loading_screen_id, data.loading_screen_text, data.loading_screen_title, data.loading_screen_subtitle)
 
-        self:add('lzzz', data.prologue_screen_id, data.prologue_screen_text, data.prologue_screen_title, data.prologue_screen_subtitle)
+        self:add('i4zzz', data.prologue_screen_id, data.prologue_screen_text, data.prologue_screen_title, data.prologue_screen_subtitle)
     end
 end
 
 function mt:add_player(data, version)
-    self:add('l', data.player_count)
+    self:add('i4', data.player_count)
 
     for i = 1, data.player_count do
         local player = data.players[i]
@@ -311,66 +367,69 @@ function mt:add_player(data, version)
         --player.ally_low_flag = player.ally_low_flag | ((1 << data.player_count) - 1)
         --player.ally_high_flag = player.ally_high_flag | ((1 << data.player_count) - 1)
 
+        self:add('i4i4i4', player.id, player.type, player.race)
+        if version >= 39 then
+            self:add('I4', player.hud_skin)
+        end
+        self:add('i4zffI4I4', player.start_position, player.name, player.start_x, player.start_y, player.ally_low_flag, player.ally_high_flag)
         if version >= 31 then
-            self:add('llllzffLLll', player.id, player.type, player.race, player.start_position, player.name, player.start_x, player.start_y, player.ally_low_flag, player.ally_high_flag, player.unknown_12, player.unknown_13)
-        else
-            self:add('llllzffLL', player.id, player.type, player.race, player.start_position, player.name, player.start_x, player.start_y, player.ally_low_flag, player.ally_high_flag)
+            self:add('I4I4', player.enemy_low_priority_flags, player.enemy_high_priority_flags)
         end
     end
 end
 
 function mt:add_force(data)
-    self:add('l', data.force_count)
+    self:add('i4', data.force_count)
 
     for i = 1, data.force_count do
         local force = data.forces[i]
 
         --force.player_flag = force.player_flag | ((1 << data.player_count) - 1)
 
-        self:add('LLz', force.force_flag, force.player_flag, force.name)
+        self:add('I4I4z', force.force_flag, force.player_flag, force.name)
     end
 end
 
 function mt:add_upgrade(data)
-    self:add('l', data.upgrade_count)
+    self:add('i4', data.upgrade_count)
 
     for i = 1, data.upgrade_count do
         local upgrade = data.upgrades[i]
 
-        self:add('lc4ll', upgrade.player_flag, upgrade.id, upgrade.level, upgrade.available)
+        self:add('I4c4i4i4', upgrade.player_flag, upgrade.id, upgrade.level, upgrade.available)
     end
 end
 
 function mt:add_tech(data)
-    self:add('l', data.tech_count)
+    self:add('i4', data.tech_count)
 
     for i = 1, data.tech_count do
         local tech = data.techs[i]
 
-        self:add('lc4', tech.player_flag, tech.id)
+        self:add('I4c4', tech.player_flag, tech.id)
     end
 end
 
 function mt:add_randomgroup(data)
-    self:add('l', data.group_count)
+    self:add('i4', data.group_count)
 
     for i = 1, data.group_count do
         local group = data.groups[i]
 
-        self:add('lz', group.id, group.name)
+        self:add('i4z', group.id, group.name)
 
-        self:add('l', group.position_count)
+        self:add('i4', group.position_count)
 
         for i = 1, group.position_count do
-            self:add('l', group.positions[i])
+            self:add('i4', group.positions[i])
         end
 
-        self:add('l', group.line_count)
+        self:add('i4', group.line_count)
 
         for i = 1, group.line_count do
             local line = group.lines[i]
 
-            self:add('l', line.chance)
+            self:add('i4', line.chance)
 
             for i = 1, group.position_count do
                 self:add('c4', line.ids[i])
@@ -380,24 +439,24 @@ function mt:add_randomgroup(data)
 end
 
 function mt:add_randomitem(data)
-    self:add('l', data.random_item_count)
+    self:add('i4', data.random_item_count)
 
     for i = 1, data.random_item_count do
         local random_item = data.random_items[i]
 
-        self:add('lz', random_item.id, random_item.name)
+        self:add('i4z', random_item.id, random_item.name)
 
-        self:add('l', random_item.set_count)
+        self:add('i4', random_item.set_count)
 
         for i = 1, random_item.set_count do
             local set = random_item.sets[i]
 
-            self:add('l', set.item_count)
+            self:add('i4', set.item_count)
 
             for i = 1, set.item_count do
                 local item = set.items[i]
 
-                self:add('lc4', item.chance, item.id)
+                self:add('i4c4', item.chance, item.id)
             end
         end
     end
@@ -412,6 +471,8 @@ return function (self, data, wts)
 
     local data = {}
     local version = tbl.data[lang.w3i.MAP][lang.w3i.FILE_VERSION]
+    assert(version == 18 or version >= 25 and version <= 33 or version == 39,
+        ('Unsupported war3map.w3i format version: %d'):format(version))
     if version >= 25 then
         tbl:read_head(data, version)
         tbl:read_player(data)
@@ -428,6 +489,11 @@ return function (self, data, wts)
         tbl:add_tech(data)
         tbl:add_randomgroup(data)
         tbl:add_randomitem(data)
+        if version == 26 or version == 27 then
+            assert(data.script_type:lower() == 'lua' or data.script_type:lower() == 'jass',
+                'Unsupported war3map.w3i script language')
+            tbl:add('i4', data.script_type:lower() == 'lua' and 1 or 0)
+        end
     elseif version == 18 then
         tbl:read_head(data, version)
         tbl:read_player(data)

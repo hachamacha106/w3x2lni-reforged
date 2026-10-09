@@ -1,0 +1,680 @@
+{
+  "name": "warcraft-current",
+  "source": "User supplied Warcraft III data export",
+  "game_version": null,
+  "game_build": null,
+  "locale": null,
+  "files": [
+    {
+      "path": "mpq/doodads/doodadmetadata.slk",
+      "source": "doodads.zip:doodadmetadata.slk",
+      "sha256": "6b90d07dca8524c3b668c0694396d13377c0b829d9124a41ce78fdbd2bc01965",
+      "bytes": 9610
+    },
+    {
+      "path": "mpq/doodads/doodads.slk",
+      "source": "doodads.zip:doodads.slk",
+      "sha256": "55568f7f036d590413f5aafa7feff31e0fcec4f30c9b9d6a92f0117afb461edf",
+      "bytes": 296001
+    },
+    {
+      "path": "mpq/doodads/doodadskins.txt",
+      "source": "doodads.zip:doodadskins.txt",
+      "sha256": "c0f8fcffe586ceceab583575d24223c9932fe868d6f9e38b79fe1c7b55f1127c",
+      "bytes": 419081
+    },
+    {
+      "path": "mpq/doodads/doodadskinsaddons.txt",
+      "source": "doodads.zip:doodadskinsaddons.txt",
+      "sha256": "5cb4407505c769d3f6b6d0366497bc6c6e328b270ac0eaaf5eff30c62290337d",
+      "bytes": 19022
+    },
+    {
+      "path": "mpq/scripts/blizzard.j",
+      "source": "blizzard.j",
+      "sha256": "5b0e4878c18e67270b78c4313e99f71d0b7b2bb252df66dd3b048128e9aa1446",
+      "bytes": 508967
+    },
+    {
+      "path": "mpq/scripts/common.ai",
+      "source": "common.ai",
+      "sha256": "91a041cdc8f7376a53f163bb34f9ece82b89819cfaec4e269edf384010bfa57f",
+      "bytes": 98600
+    },
+    {
+      "path": "mpq/scripts/common.j",
+      "source": "common.j",
+      "sha256": "8a62368ccca25773b599c031801f7908b8df50cafcc99de79649c6264dadec6d",
+      "bytes": 388042
+    },
+    {
+      "path": "mpq/ui/aieditordata.txt",
+      "source": "ui.zip:aieditordata.txt",
+      "sha256": "b7616d0079c2e8f80461449e8490884957c02b64ee6eff6ef11afbb1aa96e25c",
+      "bytes": 7816
+    },
+    {
+      "path": "mpq/ui/campaigninfoclassic.txt",
+      "source": "ui.zip:campaigninfoclassic.txt",
+      "sha256": "cfb520af627dcae88e14067a175c15ffc63669bcd9f4260aadaafcdca23f096b",
+      "bytes": 14320
+    },
+    {
+      "path": "mpq/ui/campaigninfodlc01.txt",
+      "source": "ui.zip:campaigninfodlc01.txt",
+      "sha256": "15944406a3b8aa511ffdd2df91b5275e1b115b8c4ffcfdcc3ede5aee84317db2",
+      "bytes": 3881
+    },
+    {
+      "path": "mpq/ui/campaigninforeforged.txt",
+      "source": "ui.zip:campaigninforeforged.txt",
+      "sha256": "9605202031ae33548cd38b5344eab33c18684e5078de1e713074ae7d5b49f489",
+      "bytes": 14633
+    },
+    {
+      "path": "mpq/ui/chathelp-war3-enus.txt",
+      "source": "ui2.zip:chathelp-war3-enus.txt",
+      "sha256": "1952d5f372bcd2847c789bb59dd2d6de66286ad31f15a066d9d3d0e2a7d5e91c",
+      "bytes": 9630
+    },
+    {
+      "path": "mpq/ui/helpstrings.txt",
+      "source": "ui2.zip:helpstrings.txt",
+      "sha256": "2159ae7e5337920e98c0a0b736c820ad5b5d982bb5ec83e6653582bbe645e19a",
+      "bytes": 5286
+    },
+    {
+      "path": "mpq/ui/miscdata.txt",
+      "source": "ui.zip:miscdata.txt",
+      "sha256": "10172a346e18714ead02e78d4ec13e60db1068bfa4ab0f40213b4de0caa22a5b",
+      "bytes": 29776
+    },
+    {
+      "path": "mpq/ui/miscui.txt",
+      "source": "ui.zip:miscui.txt",
+      "sha256": "cfe50f0e20ff0a013f1ec4ccd9700f32e53fa36d0f4931c1673109f2be93a348",
+      "bytes": 8302
+    },
+    {
+      "path": "mpq/ui/newaccount-enus.txt",
+      "source": "ui2.zip:newaccount-enus.txt",
+      "sha256": "8b3c4e5b28d78f91ec55ace91489286e5a267d36705800b0333cd49cd9e982cc",
+      "bytes": 527
+    },
+    {
+      "path": "mpq/ui/skinmetadata.slk",
+      "source": "ui.zip:skinmetadata.slk",
+      "sha256": "b1cc3bc501c02cca01d124d02c7a14a9982cd7b0e3d1463521cb2f8c650de4dc",
+      "bytes": 172037
+    },
+    {
+      "path": "mpq/ui/termsofservice-enus.txt",
+      "source": "ui2.zip:termsofservice-enus.txt",
+      "sha256": "421912c944a671749529c3cbd167969f0856ec628d8a3b7ea91fc11c5c014e94",
+      "bytes": 19581
+    },
+    {
+      "path": "mpq/ui/tipstrings.txt",
+      "source": "ui2.zip:tipstrings.txt",
+      "sha256": "6aee7336f990c15cd1f24e7f65f111408ee4266b67025ed6df4981b302ec1789",
+      "bytes": 12006
+    },
+    {
+      "path": "mpq/ui/triggerdata.txt",
+      "source": "ui.zip:triggerdata.txt",
+      "sha256": "0450c691461fad585c2a07c9d4665993e8e93f83ff3d8a26e812693d15ad84d9",
+      "bytes": 758141
+    },
+    {
+      "path": "mpq/ui/triggerstrings.txt",
+      "source": "ui2.zip:triggerstrings.txt",
+      "sha256": "a1693a5c5edab91d8dc66f32d9ae84022e01cc67f89a9abb4edb00179e513520",
+      "bytes": 109315
+    },
+    {
+      "path": "mpq/ui/uniteditordata.txt",
+      "source": "ui.zip:uniteditordata.txt",
+      "sha256": "604d278747ed06358699c51884c46d56c3ba766cebb778d78b1dfef3e2a41297",
+      "bytes": 15528
+    },
+    {
+      "path": "mpq/ui/war3skins.txt",
+      "source": "ui.zip:war3skins.txt",
+      "sha256": "f3c613ae88fc02ab607ff3b07af937e2570c0656e4b184bdd1a186255bb60956",
+      "bytes": 66958
+    },
+    {
+      "path": "mpq/ui/worldeditdata.txt",
+      "source": "ui.zip:worldeditdata.txt",
+      "sha256": "ac0414c808aff169c86cd3e1daea0d4f2b3be9eabdabb3c0537453d2c2b50961",
+      "bytes": 57246
+    },
+    {
+      "path": "mpq/ui/worldeditgamestrings.txt",
+      "source": "ui2.zip:worldeditgamestrings.txt",
+      "sha256": "469954dbe272c316e62dd183a9e1363de040c9e1dffd5d4e7fb6b31aafa614fc",
+      "bytes": 36462
+    },
+    {
+      "path": "mpq/ui/worldeditlayout.txt",
+      "source": "ui.zip:worldeditlayout.txt",
+      "sha256": "fedee1e8682d7a0a09c3767260809c30536f16684d14b1c53b8d9806aa953121",
+      "bytes": 100063
+    },
+    {
+      "path": "mpq/ui/worldeditlicense.en.txt",
+      "source": "ui.zip:worldeditlicense.en.txt",
+      "sha256": "8bf98c5df0b51d829526e168f0fab1cfbe6c1da55c6c4a658f1da0567d7c4669",
+      "bytes": 15086
+    },
+    {
+      "path": "mpq/ui/worldeditlicense.txt",
+      "source": "ui2.zip:worldeditlicense.txt",
+      "sha256": "fb22a3cbc54105e118abd8814ad5495999e4a926b13ca10bc5ed31e3eacfd1c9",
+      "bytes": 14134
+    },
+    {
+      "path": "mpq/ui/worldeditstrings.txt",
+      "source": "ui2.zip:worldeditstrings.txt",
+      "sha256": "70797b28d491dca8d041f3d89f488b035d038104dad99a8d98fd89c4b9f06a53",
+      "bytes": 528076
+    },
+    {
+      "path": "mpq/units/abilitybuffdata.slk",
+      "source": "units.zip:abilitybuffdata.slk",
+      "sha256": "f50bb4052f3c1163821ff6fd7354cfdb7e1813747611bf8e3445e9c1134686ce",
+      "bytes": 41055
+    },
+    {
+      "path": "mpq/units/abilitybuffmetadata.slk",
+      "source": "units.zip:abilitybuffmetadata.slk",
+      "sha256": "ed6616cb83214b3bd044b170dfd3061045aeca9591889d64d348e356613dc4da",
+      "bytes": 5926
+    },
+    {
+      "path": "mpq/units/abilitydata.slk",
+      "source": "units.zip:abilitydata.slk",
+      "sha256": "134dcb60c461a0bc94de422094d1d83beaaad53d1c3b73effd88ff2068a09cfa",
+      "bytes": 3541030
+    },
+    {
+      "path": "mpq/units/abilitymetadata.slk",
+      "source": "units.zip:abilitymetadata.slk",
+      "sha256": "f5ec983f2d885e52ba2b783362dc59574553685b943328cac9c2b1fd67b308a9",
+      "bytes": 287072
+    },
+    {
+      "path": "mpq/units/abilityskin.txt",
+      "source": "units.zip:abilityskin.txt",
+      "sha256": "b69362687aac0fa944ba48492ef57d2260a48fa1cb634e94304358a28585b532",
+      "bytes": 333946
+    },
+    {
+      "path": "mpq/units/abilityskinstrings.txt",
+      "source": "units2.zip:abilityskinstrings.txt",
+      "sha256": "a309ca6b8eaff08ff9e1c30ff1c49e41753838b2bdfc7727e159e571c58407d3",
+      "bytes": 46
+    },
+    {
+      "path": "mpq/units/abilitystatmodifiers.txt",
+      "source": "units.zip:abilitystatmodifiers.txt",
+      "sha256": "86ea7036335af4ff72fd11f7b1045f69bbb446f4e94b25562b802f1384b62e43",
+      "bytes": 1198
+    },
+    {
+      "path": "mpq/units/campaignabilityfunc.txt",
+      "source": "units.zip:campaignabilityfunc.txt",
+      "sha256": "9154519a41357a300c7da2bcae29c116e11ce43baafb35590ca20cb2e0811c50",
+      "bytes": 25772
+    },
+    {
+      "path": "mpq/units/campaignabilitystrings.txt",
+      "source": "units2.zip:campaignabilitystrings.txt",
+      "sha256": "48f22f4f11144f9fd5319ca802d1d17641d09c5bcb14e3ea5295d99ef43075c9",
+      "bytes": 235407
+    },
+    {
+      "path": "mpq/units/campaignunitfunc.txt",
+      "source": "units.zip:campaignunitfunc.txt",
+      "sha256": "16da37675733013d0c05e2b405c4930c579b5511794fd35e3699794effc04219",
+      "bytes": 49147
+    },
+    {
+      "path": "mpq/units/campaignunitstrings.txt",
+      "source": "units2.zip:campaignunitstrings.txt",
+      "sha256": "cd7b8ae9dedb976bc57cf3c4550810c534c36470668b7268b11c47f04237cb76",
+      "bytes": 50261
+    },
+    {
+      "path": "mpq/units/campaignupgradefunc.txt",
+      "source": "units.zip:campaignupgradefunc.txt",
+      "sha256": "380c9ae8fc8f52dfb722a9b6fa946281b9998b0124b02c57cc6fd4ec62df9af4",
+      "bytes": 808
+    },
+    {
+      "path": "mpq/units/campaignupgradestrings.txt",
+      "source": "units2.zip:campaignupgradestrings.txt",
+      "sha256": "a2b9d8f0b66bb23f50ecf78cd16b6bab318df0f8765eec93f66a05da901dc427",
+      "bytes": 1739
+    },
+    {
+      "path": "mpq/units/commandfunc.txt",
+      "source": "units.zip:commandfunc.txt",
+      "sha256": "66c24a00a54ae75786e8df97cbe315aad6fd14b637b693fe6001495098835a82",
+      "bytes": 1161
+    },
+    {
+      "path": "mpq/units/commandskinstrings.txt",
+      "source": "units2.zip:commandskinstrings.txt",
+      "sha256": "f1d32d5d7a6d159435d1045a3b46ea880241f09ba065570638e4d7260bb987e9",
+      "bytes": 43
+    },
+    {
+      "path": "mpq/units/commandstrings.txt",
+      "source": "units2.zip:commandstrings.txt",
+      "sha256": "2a4007bc8004c8c77dbd4e5d4638b177b9ebaff46ed8c5b7fa5467111ed659ed",
+      "bytes": 14844
+    },
+    {
+      "path": "mpq/units/commonabilityfunc.txt",
+      "source": "units.zip:commonabilityfunc.txt",
+      "sha256": "06dbede209c6208f27125087b5e6c3153f935f9ea472e68ad9c3251cbfedb5fd",
+      "bytes": 949
+    },
+    {
+      "path": "mpq/units/commonabilitystrings.txt",
+      "source": "units2.zip:commonabilitystrings.txt",
+      "sha256": "b7e9c5b4221a435a3901c88a1af5311ebbfca4e4e8b5f6386e5ee519f5cc36c0",
+      "bytes": 3663
+    },
+    {
+      "path": "mpq/units/destructableaddons.txt",
+      "source": "units.zip:destructableaddons.txt",
+      "sha256": "1c67670cbd4b96b62423f7c67f2efe520fa7174a8d57f22ec78c696af0d91805",
+      "bytes": 9859
+    },
+    {
+      "path": "mpq/units/destructabledata.slk",
+      "source": "units.zip:destructabledata.slk",
+      "sha256": "374e25d477f3cad25d141d752e9f965c451671a01ca863cee1067ef465e0b817",
+      "bytes": 194879
+    },
+    {
+      "path": "mpq/units/destructablemetadata.slk",
+      "source": "units.zip:destructablemetadata.slk",
+      "sha256": "3e98e60592eb369ad67a3ad9f07cf58410f30dd6fbc7fd7af9c3210a3c232ff8",
+      "bytes": 12864
+    },
+    {
+      "path": "mpq/units/destructableskin.txt",
+      "source": "units.zip:destructableskin.txt",
+      "sha256": "483f642bc6282daa48b4eec9b254a92e3a48fbaeef5dd07a415481c5b4fd286d",
+      "bytes": 153263
+    },
+    {
+      "path": "mpq/units/destructableskinstrings.txt",
+      "source": "units2.zip:destructableskinstrings.txt",
+      "sha256": "a309ca6b8eaff08ff9e1c30ff1c49e41753838b2bdfc7727e159e571c58407d3",
+      "bytes": 46
+    },
+    {
+      "path": "mpq/units/generalkeybindstrings.txt",
+      "source": "units2.zip:generalkeybindstrings.txt",
+      "sha256": "f4f770428c061b5c0600a85e525769d450cdf24ce10684cdf5570678b1809d26",
+      "bytes": 2194
+    },
+    {
+      "path": "mpq/units/humanabilityfunc.txt",
+      "source": "units.zip:humanabilityfunc.txt",
+      "sha256": "5610f2befbb237f3127f884483e34ab2e85bf71d9e112a40b12936eabba564c7",
+      "bytes": 5810
+    },
+    {
+      "path": "mpq/units/humanabilitystrings.txt",
+      "source": "units2.zip:humanabilitystrings.txt",
+      "sha256": "5fcffe29475067d594c34c1d44eebc1c5a2a717970f3e71b977165287828cb0a",
+      "bytes": 29857
+    },
+    {
+      "path": "mpq/units/humanunitfunc.txt",
+      "source": "units.zip:humanunitfunc.txt",
+      "sha256": "c83036226c015ac04951da7ef2ea76c6c67be461ba50e75136cbf40f37deb285",
+      "bytes": 10706
+    },
+    {
+      "path": "mpq/units/humanunitstrings.txt",
+      "source": "units2.zip:humanunitstrings.txt",
+      "sha256": "ea7adbe34031725a8bee15b30650f00f23f1448d0ba0c4c26f9000afe580adf9",
+      "bytes": 14568
+    },
+    {
+      "path": "mpq/units/humanupgradefunc.txt",
+      "source": "units.zip:humanupgradefunc.txt",
+      "sha256": "f6330038c64bd85ae9bd1a7e9caff8c355bfc50b80747e1198659bb0398a3d8d",
+      "bytes": 3298
+    },
+    {
+      "path": "mpq/units/humanupgradestrings.txt",
+      "source": "units2.zip:humanupgradestrings.txt",
+      "sha256": "62196c8469c99861140cdc843a3ce08bd2e1f10b0c3253ad320e874fc4e57fa7",
+      "bytes": 8500
+    },
+    {
+      "path": "mpq/units/itemabilityfunc.txt",
+      "source": "units.zip:itemabilityfunc.txt",
+      "sha256": "1316f482bbb23e27aebfad2aa86c2bdb120a544fef7d883726f0bdfce5600b6d",
+      "bytes": 11139
+    },
+    {
+      "path": "mpq/units/itemabilitystrings.txt",
+      "source": "units2.zip:itemabilitystrings.txt",
+      "sha256": "882bd54c2f6a83f1c20a6fe792f78950d570b64163094c144ee44e8a132b790e",
+      "bytes": 44776
+    },
+    {
+      "path": "mpq/units/itemaddons.txt",
+      "source": "units.zip:itemaddons.txt",
+      "sha256": "f39d0ed1535db5ebef3a95959f4803c7a6321061daef0bd351ecc55b91006917",
+      "bytes": 6509
+    },
+    {
+      "path": "mpq/units/itemdata.slk",
+      "source": "units.zip:itemdata.slk",
+      "sha256": "cd75604810d6e81dc68245dbb4f12a7041fed67b8bb36af49e27868aad49d4c4",
+      "bytes": 282453
+    },
+    {
+      "path": "mpq/units/itemfunc.txt",
+      "source": "units.zip:itemfunc.txt",
+      "sha256": "556c3d652ff338299a2d9df7c5dc37dd5960ae2cc30ab696c95c10cd84593f79",
+      "bytes": 66950
+    },
+    {
+      "path": "mpq/units/itemskin.txt",
+      "source": "units.zip:itemskin.txt",
+      "sha256": "44e45b5e6a6e892f972ac058f31b0b7e1e5f659003c7653be5f0a99e448b3353",
+      "bytes": 109534
+    },
+    {
+      "path": "mpq/units/itemskinstrings.txt",
+      "source": "units2.zip:itemskinstrings.txt",
+      "sha256": "a309ca6b8eaff08ff9e1c30ff1c49e41753838b2bdfc7727e159e571c58407d3",
+      "bytes": 46
+    },
+    {
+      "path": "mpq/units/itemstrings.txt",
+      "source": "units2.zip:itemstrings.txt",
+      "sha256": "fd1d591ab07c0cbfedfa932b6b2c36f08f44028a6778577f8bd208d23d3955a4",
+      "bytes": 254010
+    },
+    {
+      "path": "mpq/units/miscdata.txt",
+      "source": "units.zip:miscdata.txt",
+      "sha256": "c6a900ad7126b6f88897ebd26f1f2af2a90dadca72d615c737b5282921638016",
+      "bytes": 2268
+    },
+    {
+      "path": "mpq/units/miscgame.txt",
+      "source": "units.zip:miscgame.txt",
+      "sha256": "f771099e2087dd8b9bf3bbddbcc5b8ac89ef5f86cca5da07e905f44a8c6c655e",
+      "bytes": 6364
+    },
+    {
+      "path": "mpq/units/miscmetadata.slk",
+      "source": "units.zip:miscmetadata.slk",
+      "sha256": "de392928ad2e06ca41edbcfb09339a7a4e45d38a8eb2821ab697cdd06d6b75d3",
+      "bytes": 50989
+    },
+    {
+      "path": "mpq/units/neutralabilityfunc.txt",
+      "source": "units.zip:neutralabilityfunc.txt",
+      "sha256": "886529b626505f3d91024594b7ac2e5a4bd210b64ae645107666e08e6849233d",
+      "bytes": 22177
+    },
+    {
+      "path": "mpq/units/neutralabilitystrings.txt",
+      "source": "units2.zip:neutralabilitystrings.txt",
+      "sha256": "ce3a27b40a56044f6fb3d3981cc2be93f9a5f8ff28f76c1aa6029acbfd3c9595",
+      "bytes": 139771
+    },
+    {
+      "path": "mpq/units/neutralunitfunc.txt",
+      "source": "units.zip:neutralunitfunc.txt",
+      "sha256": "1269cfcbd06d19cb7dc016d4704e3fb8c1f71e377c758f9322e9352fcdc9a6d6",
+      "bytes": 67793
+    },
+    {
+      "path": "mpq/units/neutralunitstrings.txt",
+      "source": "units2.zip:neutralunitstrings.txt",
+      "sha256": "77c0ebfc658b1e68be62550c8253caadb8e97dc589fee00ae2452ce8232646a7",
+      "bytes": 75794
+    },
+    {
+      "path": "mpq/units/neutralupgradefunc.txt",
+      "source": "units.zip:neutralupgradefunc.txt",
+      "sha256": "0674d10f78ef95d5741186f1c8c3629a9c30e462522c7afbe72123f5a66b23ee",
+      "bytes": 301
+    },
+    {
+      "path": "mpq/units/neutralupgradestrings.txt",
+      "source": "units2.zip:neutralupgradestrings.txt",
+      "sha256": "7de7936c06b35727655e260b9fd0ba67014e0715ab7f5431a70ea2e9d57a3c4a",
+      "bytes": 281
+    },
+    {
+      "path": "mpq/units/nightelfabilityfunc.txt",
+      "source": "units.zip:nightelfabilityfunc.txt",
+      "sha256": "a1eb43c2a167b36dd4bb101a48def1671894dba51bb3280d89a87348f57d5f59",
+      "bytes": 7097
+    },
+    {
+      "path": "mpq/units/nightelfabilitystrings.txt",
+      "source": "units2.zip:nightelfabilitystrings.txt",
+      "sha256": "3d01a12000649b7b3d3462168ca5ac051d4a8a3c5e28d2630ad4261d7df7939a",
+      "bytes": 32324
+    },
+    {
+      "path": "mpq/units/nightelfunitfunc.txt",
+      "source": "units.zip:nightelfunitfunc.txt",
+      "sha256": "5203dd30cab5a521dca56c13d2532c3f6d5699dbd28a1dc95f557caf624270f9",
+      "bytes": 9591
+    },
+    {
+      "path": "mpq/units/nightelfunitstrings.txt",
+      "source": "units2.zip:nightelfunitstrings.txt",
+      "sha256": "aac81e403b8c9fd5f4d78c60b21102da4ee6f104ff29503dd056e01a7ac05271",
+      "bytes": 16425
+    },
+    {
+      "path": "mpq/units/nightelfupgradefunc.txt",
+      "source": "units.zip:nightelfupgradefunc.txt",
+      "sha256": "dcd79265dd25b2b54b2599e5d2d7972f676061666468736f59318b6ef6850a74",
+      "bytes": 3102
+    },
+    {
+      "path": "mpq/units/nightelfupgradestrings.txt",
+      "source": "units2.zip:nightelfupgradestrings.txt",
+      "sha256": "e2cf9fa0292b5cd58517ee2fb645b318e41b9d83bef9673d8b7fb9e73cec2624",
+      "bytes": 8481
+    },
+    {
+      "path": "mpq/units/orcabilityfunc.txt",
+      "source": "units.zip:orcabilityfunc.txt",
+      "sha256": "a0815dc46029e13a364720267370da7bb63c4cfbdec0d2807736122172f21d52",
+      "bytes": 5451
+    },
+    {
+      "path": "mpq/units/orcabilitystrings.txt",
+      "source": "units2.zip:orcabilitystrings.txt",
+      "sha256": "482c86c8c02d652016eac14b66bab67b8e865b53b5c3471f49d40fa299d27612",
+      "bytes": 31222
+    },
+    {
+      "path": "mpq/units/orcunitfunc.txt",
+      "source": "units.zip:orcunitfunc.txt",
+      "sha256": "1763cb69802dc0eba34caa68be87e09c06904a63df4ca75c47667c17ef95a540",
+      "bytes": 8707
+    },
+    {
+      "path": "mpq/units/orcunitstrings.txt",
+      "source": "units2.zip:orcunitstrings.txt",
+      "sha256": "0cdea35694ad989cf551d1640015fd9922f64018cab8a5fe78ab5cf92b32a93a",
+      "bytes": 14434
+    },
+    {
+      "path": "mpq/units/orcupgradefunc.txt",
+      "source": "units.zip:orcupgradefunc.txt",
+      "sha256": "d15edd2b7096fbda4a1260048c834392397443e6f51966085aec86a9377e5953",
+      "bytes": 2914
+    },
+    {
+      "path": "mpq/units/orcupgradestrings.txt",
+      "source": "units2.zip:orcupgradestrings.txt",
+      "sha256": "098317b1973461fed179e8ef281f9a45af368e5fa709f88d1801377716621b9e",
+      "bytes": 9831
+    },
+    {
+      "path": "mpq/units/undeadabilityfunc.txt",
+      "source": "units.zip:undeadabilityfunc.txt",
+      "sha256": "eaff8c011950f15a324ca6d8b47205e5bec067d5de82885d8db322b0e582a3ce",
+      "bytes": 7367
+    },
+    {
+      "path": "mpq/units/undeadabilitystrings.txt",
+      "source": "units2.zip:undeadabilitystrings.txt",
+      "sha256": "de6a318be5cbd46fe1f4d04269667174c5c46c8b78d322e96906f1f109c34515",
+      "bytes": 36114
+    },
+    {
+      "path": "mpq/units/undeadunitfunc.txt",
+      "source": "units.zip:undeadunitfunc.txt",
+      "sha256": "0b1a8d91dc71cd53a91b828fa78d8e1b556b715057c5263440db33612cc5e416",
+      "bytes": 9376
+    },
+    {
+      "path": "mpq/units/undeadunitstrings.txt",
+      "source": "units2.zip:undeadunitstrings.txt",
+      "sha256": "dc67dcc85e611268fc0cbba1e7beb19f609e3afae96ec9955c8391fe51027e6d",
+      "bytes": 13314
+    },
+    {
+      "path": "mpq/units/undeadupgradefunc.txt",
+      "source": "units.zip:undeadupgradefunc.txt",
+      "sha256": "a9524ff5f626eb6296d38ec3f271e730d24abf7596b39cbecfa6367d29a18131",
+      "bytes": 2661
+    },
+    {
+      "path": "mpq/units/undeadupgradestrings.txt",
+      "source": "units2.zip:undeadupgradestrings.txt",
+      "sha256": "041690d435a2dee7f87edfa845a44a2ec400150144a2be2a2652ff33748c07d0",
+      "bytes": 9485
+    },
+    {
+      "path": "mpq/units/unitabilities.slk",
+      "source": "units.zip:unitabilities.slk",
+      "sha256": "c89743d6542b581eb8f2af5977442140ad8d27e6f83a31df4f9c914ddcddae97",
+      "bytes": 88439
+    },
+    {
+      "path": "mpq/units/unitaddons.txt",
+      "source": "units.zip:unitaddons.txt",
+      "sha256": "5653ddcc834ff1b97c7c1c8b99c1e30b37799f5be00cec86792eeb5e484c9033",
+      "bytes": 22739
+    },
+    {
+      "path": "mpq/units/unitbalance.slk",
+      "source": "units.zip:unitbalance.slk",
+      "sha256": "8746680c3eb0fd1b8055bbf5a28f74bce262158400780217ef9542f5374f9d17",
+      "bytes": 693759
+    },
+    {
+      "path": "mpq/units/unitdata.slk",
+      "source": "units.zip:unitdata.slk",
+      "sha256": "b4830f02053caeebe72defb55f1f24fbeb83343ff8af60456b2b92aaf59cb0d1",
+      "bytes": 343550
+    },
+    {
+      "path": "mpq/units/unitglobalstrings.txt",
+      "source": "units2.zip:unitglobalstrings.txt",
+      "sha256": "7c60a1b8349f13efe464825ce9f9479a2cc0fb1b0b4d825d12c7bd52fca56bcb",
+      "bytes": 98
+    },
+    {
+      "path": "mpq/units/unitmetadata.slk",
+      "source": "units.zip:unitmetadata.slk",
+      "sha256": "eaea4b8314bcdcba38b5330b2bdea500d02cd448df22a789558325df81be09a4",
+      "bytes": 73808
+    },
+    {
+      "path": "mpq/units/unitskin.txt",
+      "source": "units.zip:unitskin.txt",
+      "sha256": "a6a53fc74a91fee86d35d7b10846424d25ef826a971bc8b532b5f3d5bfbb6493",
+      "bytes": 967179
+    },
+    {
+      "path": "mpq/units/unitskinstrings.txt",
+      "source": "units2.zip:unitskinstrings.txt",
+      "sha256": "497400fece5b0ef15a3b042883ec4b895af5411af6ad4c2c42d24cf8cf41941b",
+      "bytes": 3387
+    },
+    {
+      "path": "mpq/units/unitui.slk",
+      "source": "units.zip:unitui.slk",
+      "sha256": "e44d55577dda540f6437bb1bb20bb309109491f45129691cd97a1b73b4396030",
+      "bytes": 289876
+    },
+    {
+      "path": "mpq/units/unitweapons.slk",
+      "source": "units.zip:unitweapons.slk",
+      "sha256": "ab823130a4c59c5bbba5d59632002152beae95330f9dd222c843ceb5f86b2725",
+      "bytes": 799864
+    },
+    {
+      "path": "mpq/units/unitweaponsfunc.txt",
+      "source": "units.zip:unitweaponsfunc.txt",
+      "sha256": "316c1c4f95e00156e537666a10ef82f70fb1ed8ea0ca8938e9c8dd512155a48e",
+      "bytes": 29957
+    },
+    {
+      "path": "mpq/units/unitweaponsskin.txt",
+      "source": "units.zip:unitweaponsskin.txt",
+      "sha256": "91ef5178cffef4c8f90d09e134cd6fee94f0ba02fec7843ee1854e6d3d64eafe",
+      "bytes": 104301
+    },
+    {
+      "path": "mpq/units/upgradedata.slk",
+      "source": "units.zip:upgradedata.slk",
+      "sha256": "6d2d73161f4543dd3c454f1faf621e49b53291c415d72a83ca92f315bf17d840",
+      "bytes": 36769
+    },
+    {
+      "path": "mpq/units/upgradeeffectmetadata.slk",
+      "source": "units.zip:upgradeeffectmetadata.slk",
+      "sha256": "77c5c00c1becbb83a83e54e29632a23a94f7971f8ec7b1e18f48ca47eb1b4951",
+      "bytes": 9938
+    },
+    {
+      "path": "mpq/units/upgrademetadata.slk",
+      "source": "units.zip:upgrademetadata.slk",
+      "sha256": "f1ea94517975da1b93cf53f21ff0bb2c4c07f8cd803963b36575370f96108e84",
+      "bytes": 9796
+    },
+    {
+      "path": "mpq/units/upgradeskin.txt",
+      "source": "units.zip:upgradeskin.txt",
+      "sha256": "0c5439172c5bd6431f05c6e1a82a8ba29e9c82dc07e26474646aa08a90bcb3a9",
+      "bytes": 60
+    },
+    {
+      "path": "mpq/units/upgradeskinstrings.txt",
+      "source": "units2.zip:upgradeskinstrings.txt",
+      "sha256": "a309ca6b8eaff08ff9e1c30ff1c49e41753838b2bdfc7727e159e571c58407d3",
+      "bytes": 46
+    }
+  ],
+  "additional_sources": [
+    "units2.zip",
+    "ui2.zip"
+  ],
+  "source_note": "All attached raw exports are preserved byte-for-byte. Exact game build and locale have not been confirmed by the user."
+}

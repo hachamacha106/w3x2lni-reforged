@@ -4,3 +4,6 @@ template/** linguist-vendored
 *.txt text eol=crlf
 *.j text eol=crlf
 *.lua text eol=crlf
+
+# Supplied game-data provenance uses byte hashes; never normalize these inputs.
+data/warcraft-current/mpq/** -text

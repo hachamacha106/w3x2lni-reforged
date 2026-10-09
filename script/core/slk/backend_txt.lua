@@ -21,6 +21,8 @@ local metadata
 local keys
 local remove_unuse_object
 local object
+local indexed_fields
+local profile_routes
 
 local function to_type(tp, value, reforge)
     if tp == 0 then
@@ -61,10 +63,10 @@ local function to_type(tp, value, reforge)
     end
 end
 
-local function get_index_data(tp, l, n, cantcut)
+local function get_index_data(tp, l, n, cantcut, keep_zero)
     local null
     for i = n, 1, -1 do
-        local v = to_type(tp, l[i])
+        local v = to_type(tp, l[i], keep_zero)
         if v and v ~= '' then
             l[i] = v
             null = ''
@@ -89,10 +91,33 @@ end
 
 local function add_data(obj, meta, value, keyval)
     local key = meta.field
+    local keep_zero = meta.reforge or profile_routes[meta.key]
     if meta.index then
-        -- TODO: 有点奇怪的写法
         if meta.index == 1 then
-            local value = get_index_data(meta.type, {obj[meta.key..'_1'], obj[meta.key..'_2']}, 2, true)
+            local field = indexed_fields[meta.key]
+            local values = {}
+            local specified = false
+            for i = 1, field.count do
+                local indexed_key = field[i]
+                if indexed_key and obj[indexed_key] ~= nil then
+                    specified = true
+                end
+            end
+            if not specified then
+                return
+            end
+            for i = 1, field.count do
+                local indexed_key = field[i]
+                if indexed_key then
+                    values[i] = obj[indexed_key]
+                    local indexed_meta = metadata[indexed_key]
+                    if values[i] == nil and indexed_meta.reforge then
+                        values[i] = obj[indexed_meta.reforge]
+                    end
+                end
+            end
+            local value = get_index_data(meta.type, values, field.count, true,
+                meta.reforge or w2l:isreforge())
             if not value then
                 if meta.cantempty and not meta.reforge then
                     value = ','
@@ -100,7 +125,9 @@ local function add_data(obj, meta, value, keyval)
                     return
                 end
             end
-            keyval[#keyval+1] = {key:sub(1,-3), value}
+            -- Indices precede graphics suffixes (file_1:hd -> file:hd).
+            key = key:gsub('_%d+(:[^:]+)$', '%1'):gsub('_%d+$', '')
+            keyval[#keyval+1] = {key, value}
         end
         return
     end
@@ -129,7 +156,7 @@ local function add_data(obj, meta, value, keyval)
                     if meta.concat then
                         keyval[#keyval+1] = {key, value[i]}
                     else
-                        keyval[#keyval+1] = {key, to_type(meta.type, value[i])}
+                        keyval[#keyval+1] = {key, to_type(meta.type, value[i], keep_zero)}
                     end
                 end
             end
@@ -143,7 +170,7 @@ local function add_data(obj, meta, value, keyval)
             if meta.concat then
                 keyval[#keyval+1] = {key, value}
             else
-                keyval[#keyval+1] = {key, to_type(meta.type, value)}
+                keyval[#keyval+1] = {key, to_type(meta.type, value, keep_zero)}
             end
         end
         return
@@ -158,9 +185,9 @@ local function add_data(obj, meta, value, keyval)
         if #value == 0 then
             return
         end
-        value = get_index_data(meta.type, value, #value, meta.cantcut)
+        value = get_index_data(meta.type, value, #value, meta.cantcut, keep_zero)
     else
-        value = to_type(meta.type, value, meta.reforge)
+        value = to_type(meta.type, value, keep_zero)
     end
     if not value or value == '' then
         if meta.cantempty and not meta.reforge then
@@ -219,8 +246,7 @@ local function create_keyval(obj, txt_obj)
     return keyval
 end
 
-local function stringify_obj(str, obj, txt_obj)
-    local keyval = create_keyval(obj, txt_obj)
+local function stringify_values(str, obj, keyval)
     if #keyval == 0 then
         return
     end
@@ -243,6 +269,35 @@ local function stringify_obj(str, obj, txt_obj)
         str[#str] = nil
     else
         str[#str+1] = ''
+    end
+end
+
+local function stringify_obj(str, obj, txt_obj, skin_files)
+    local normal = {}
+    local profiles = {}
+    for _, kv in ipairs(create_keyval(obj, txt_obj)) do
+        local field = kv[1]:lower()
+        local filename = profile_routes[field]
+            or profile_routes[field:match '^[^:]+']
+        if filename then
+            local values = profiles[filename]
+            if not values then
+                values = {}
+                profiles[filename] = values
+            end
+            values[#values + 1] = kv
+        else
+            normal[#normal + 1] = kv
+        end
+    end
+    stringify_values(str, obj, normal)
+    for filename, values in pairs(profiles) do
+        local output = skin_files[filename]
+        if not output then
+            output = {}
+            skin_files[filename] = output
+        end
+        stringify_values(output, obj, values)
     end
 end
 
@@ -406,6 +461,26 @@ end
 local function update_constant(type)
     metadata = w2l:metadata()[type]
     keys = w2l:keydata()[type] or {}
+    indexed_fields = {}
+    for _, key in ipairs(keys) do
+        local meta = metadata[key]
+        if meta.index and meta.index > 0 then
+            local field = indexed_fields[meta.key]
+            if not field then
+                field = {count = 0}
+                indexed_fields[meta.key] = field
+            end
+            field[meta.index] = key
+            field.count = math.max(field.count, meta.index)
+        end
+    end
+    profile_routes = {}
+    for _, filename in ipairs(w2l.info.profile_skin and w2l.info.profile_skin[type] or {}) do
+        for _, field in ipairs(w2l:keydata()[filename] or {}) do
+            -- The first native profile owning a field takes precedence.
+            profile_routes[field] = profile_routes[field] or filename
+        end
+    end
 end
 
 return function(w2l_, slk, report_, obj)
@@ -428,15 +503,19 @@ return function(w2l_, slk, report_, obj)
         end
     end
     local r = {}
+    local skin_files = {}
     for _, type in ipairs(type_list) do
         update_constant(type)
         local str = {}
         table_sort(list[type])
         for _, name in ipairs(list[type]) do
             local lname = name:lower()
-            stringify_obj(str, txt[lname], slk['txt'][lname])
+            stringify_obj(str, txt[lname], slk['txt'][lname], skin_files)
         end
         r[type] = table_concat(str, '\r\n')
     end
-    return r
+    for filename, lines in pairs(skin_files) do
+        skin_files[filename] = table_concat(lines, '\r\n')
+    end
+    return r, skin_files
 end

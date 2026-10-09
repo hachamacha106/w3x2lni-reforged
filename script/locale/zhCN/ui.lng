@@ -80,3 +80,9 @@
 转为
 [ADVANCED]
 高级
+[COPY_ALL]
+复制全部
+[COPY_HINT]
+Ctrl+A：全选   Ctrl+C：复制所选文本
+[MAINTAINER]
+维护者：

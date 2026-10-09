@@ -144,45 +144,87 @@ local function is_same_as_reforge(a, b, meta)
     end
 end
 
-local function clean_obj(obj, type, default)
+local function preserve_skin_values(obj, ttype)
+    local fields = {}
+    for _, field in ipairs(obj._skin_fields or {}) do
+        fields[field] = true
+    end
+    local values = {}
+    local function save(metas)
+        for key, meta in pairs(metas or {}) do
+            local data = obj[key]
+            if type(data) == 'table' then
+                local levels = {}
+                for level, value in pairs(data) do
+                    if fields[meta.id .. ':' .. level] then
+                        levels[level] = value
+                    end
+                end
+                if next(levels) then
+                    values[key] = levels
+                end
+            elseif data ~= nil and fields[meta.id .. ':1'] then
+                values[key] = data
+            end
+        end
+    end
+    save(metadata[ttype])
+    save(metadata[obj._code])
+    return values
+end
+
+local function clean_obj(obj, ttype, default)
     local parent = obj._parent
     local default = default[parent]
     if not default then
         return
     end
-    for key, meta in sortpairs(metadata[type]) do
+    local skin_values = obj._skin_version and preserve_skin_values(obj, ttype)
+    for key, meta in sortpairs(metadata[ttype]) do
         local data = obj[key]
         if meta.profile then
-            remove_same_as_txt(meta, key, data, default, obj, type)
+            remove_same_as_txt(meta, key, data, default, obj, ttype)
         else
-            remove_same_as_slk(meta, key, data, default, obj, type)
+            remove_same_as_slk(meta, key, data, default, obj, ttype)
         end
     end
     if metadata[obj._code] then
         for key, meta in pairs(metadata[obj._code]) do
             local data = obj[key]
             if meta.profile then
-                remove_same_as_txt(meta, key, data, default, obj, type)
+                remove_same_as_txt(meta, key, data, default, obj, ttype)
             else
-                remove_same_as_slk(meta, key, data, default, obj, type)
+                remove_same_as_slk(meta, key, data, default, obj, ttype)
             end
         end
     end
     -- 如果 art, art:hd, art:sd 中任意一项有变化，且他们的值
     -- 完全相同，则将变化挪到 art 上
     if w2l:isreforge() then
-        for key, meta in pairs(metadata[type]) do
+        for key, meta in pairs(metadata[ttype]) do
             local datahd = obj[key..':hd']
             local datasd = obj[key..':sd']
             if datahd or datasd then
                 local def = obj[key] or default[key]
                 if is_same_as_reforge(def, datahd, meta)
-                and is_same_as_reforge(def, datahd, meta) then
+                and is_same_as_reforge(def, datasd, meta) then
                     obj[key] = datahd
                     obj[key..':hd'] = nil
                     obj[key..':sd'] = nil
                 end
             end
+        end
+    end
+    -- An explicit skin value equal to the stock value can still override a
+    -- different value in the main object file. Preserve that precedence.
+    for key, value in pairs(skin_values or {}) do
+        if type(value) == 'table' then
+            obj[key] = obj[key] or {}
+            for level, data in pairs(value) do
+                obj[key][level] = data
+            end
+        else
+            obj[key] = value
         end
     end
 end
@@ -234,8 +276,7 @@ local function clean_txt_keys(slk)
             local txtObj = slk.txt[id:lower()]
             if txtObj then
                 for k in pairs(txtObj) do
-                    local originKey = k:match '^([^:]+)'
-                    if removeKeys[originKey] then
+                    if removeKeys[k] then
                         txtObj[k] = nil
                     end
                 end

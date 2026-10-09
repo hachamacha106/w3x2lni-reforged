@@ -23,7 +23,8 @@ local function format_value(value)
         if math_type(value) == 'integer' then
             return value
         else
-            return ('%.4f'):format(value)
+            -- Nine significant digits round-trip every finite IEEE-754 binary32 value.
+            return ('%.9g'):format(value)
         end
     end
 end
@@ -48,10 +49,13 @@ function mt:title(name, data)
     return data[name]
 end
 
-function mt:value(name)
+function mt:value(name, comment)
     local value = self._title[name]
     if not value then
         return
+    end
+    if comment then
+        self:add('-- %s', comment)
     end
     if type(value) == 'table' then
         local strs = format_table(value)
@@ -76,12 +80,17 @@ function mt:add_head(data)
     self:value(lang.w3i.MAP_DESC)
     self:value(lang.w3i.PLAYER_DESC)
     self:value(lang.w3i.SCRIPT_TYPE)
-    self:value(lang.w3i.UNKNOWN_10)
-    self:value(lang.w3i.UNKNOWN_11)
+    self:value(lang.w3i.SUPPORTED_GRAPHICS_MODES, lang.w3i.SUPPORTED_GRAPHICS_MODES_COMMENT)
+    local current_data = (self._title[lang.w3i.FILE_VERSION] or 0) >= 39
+    self:value(lang.w3i.GAME_DATA_VERSION, current_data and lang.w3i.GAME_DATA_VERSION_CURRENT_COMMENT
+        or lang.w3i.GAME_DATA_VERSION_COMMENT)
 
     self:title(lang.w3i.CAMERA, data)
     self:value(lang.w3i.CAMERA_BOUND)
     self:value(lang.w3i.CAMERA_COMPLEMENT)
+    self:value(lang.w3i.DEFAULT_CAMERA_ZOOM)
+    self:value(lang.w3i.MAX_CAMERA_ZOOM)
+    self:value(lang.w3i.MIN_CAMERA_ZOOM)
 
     self:title(lang.w3i.MAP_INFO, data)
     self:value(lang.w3i.MAP_WIDTH)
@@ -103,18 +112,24 @@ function mt:add_head(data)
     self:value(lang.w3i.MAP_MENU_MARK)
     self:value(lang.w3i.SHOW_WAVE_ON_CLIFF)
     self:value(lang.w3i.SHOW_WAVE_ON_ROLLING)
-    self:value(lang.w3i.UNKNOWN_1)
-    self:value(lang.w3i.UNKNOWN_2)
-    self:value(lang.w3i.UNKNOWN_3)
-    self:value(lang.w3i.UNKNOWN_4)
-    self:value(lang.w3i.UNKNOWN_5)
-    self:value(lang.w3i.UNKNOWN_6)
-    self:value(lang.w3i.UNKNOWN_7)
-    self:value(lang.w3i.UNKNOWN_8)
-    self:value(lang.w3i.UNKNOWN_9)
+    self:value(lang.w3i.USE_TERRAIN_FOG)
+    self:value(lang.w3i.REQUIRES_EXPANSION)
+    self:value(lang.w3i.USE_ITEM_CLASSIFICATION)
+    self:value(lang.w3i.USE_WATER_TINTING)
+    self:value(lang.w3i.ACCURATE_PROBABILITY)
+    self:value(lang.w3i.CUSTOM_ABILITY_SKINS)
+    self:value(lang.w3i.DISABLE_DENY_ICON)
+    self:value(lang.w3i.FORCE_DEFAULT_ZOOM)
+    self:value(lang.w3i.FORCE_MAX_ZOOM)
+    self:value(lang.w3i.FORCE_MIN_ZOOM)
+    self:value(lang.w3i.OVERRIDE_HD_WATER_COLOR)
+    self:value(lang.w3i.ALPHA_TILE_MINIMAP_COLOR)
+    self:value(lang.w3i.DYNAMIC_MINIMAP)
+    self:value(lang.w3i.UNKNOWN_FLAGS, lang.w3i.UNKNOWN_FLAGS_COMMENT)
     
     self:title(lang.w3i.LOADING_SCREEN, data)
     self:value(lang.w3i.ID)
+    self:value(lang.w3i.LOADING_SCREEN_RACE_HUD)
     self:value(lang.w3i.PATH)
     self:value(lang.w3i.TEXT)
     self:value(lang.w3i.TITLE)
@@ -133,12 +148,28 @@ function mt:add_head(data)
     self:value(lang.w3i.END_Z)
     self:value(lang.w3i.DENSITY)
     self:value(lang.w3i.COLOR)
+    self:value(lang.w3i.HEIGHT_START)
+    self:value(lang.w3i.HEIGHT_END)
+    self:value(lang.w3i.LINEAR_START)
+    self:value(lang.w3i.LINEAR_END)
+    self:value(lang.w3i.MAX_OPACITY)
+    self:value(lang.w3i.DRAW_OVER_SKY)
 
     self:title(lang.w3i.ENVIRONMENT, data)
     self:value(lang.w3i.WEATHER)
     self:value(lang.w3i.SOUND)
     self:value(lang.w3i.LIGHT)
     self:value(lang.w3i.WATER_COLOR)
+    self:value(lang.w3i.WATER_MIN_OPACITY)
+    self:value(lang.w3i.WATER_MAX_OPACITY)
+    self:value(lang.w3i.WATER_REFLECTIVITY)
+    self:value(lang.w3i.WATER_EMISSIVITY)
+    self:value(lang.w3i.WATER_EDGE_SOFTNESS)
+    self:value(lang.w3i.WATER_WAVES_DISPLACEMENT)
+    self:value(lang.w3i.WATER_WAVES_NORMAL_STRENGTH)
+    self:value(lang.w3i.WATER_TINTING_COLOR)
+    self:value(lang.w3i.WATER_ENV_REFLECTIVITY)
+    self:value(lang.w3i.MINIMAP_ALPHA_TILE_COLOR, lang.w3i.MINIMAP_ALPHA_TILE_COLOR_COMMENT)
 
     return data
 end
@@ -152,13 +183,14 @@ function mt:add_player(data)
         self:value(lang.w3i.PLAYER)
         self:value(lang.w3i.TYPE)
         self:value(lang.w3i.RACE)
+        self:value(lang.w3i.HUD_SKIN)
         self:value(lang.w3i.FIX_START_POSITION)
         self:value(lang.w3i.NAME)
         self:value(lang.w3i.START_POSITION)
         self:value(lang.w3i.ALLY_LOW_FLAG)
         self:value(lang.w3i.ALLY_HIGH_FLAG)
-        self:value(lang.w3i.UNKNOWN_12)
-        self:value(lang.w3i.UNKNOWN_13)
+        self:value(lang.w3i.ENEMY_LOW_PRIORITY_FLAGS, lang.w3i.ENEMY_PRIORITY_FLAGS_COMMENT)
+        self:value(lang.w3i.ENEMY_HIGH_PRIORITY_FLAGS)
     end
 end
 
@@ -173,7 +205,9 @@ function mt:add_force(data)
         self:value(lang.w3i.SHARE_VISIBLE)
         self:value(lang.w3i.SHARE_CONTROL)
         self:value(lang.w3i.SHARE_ADVANCE)
+        self:value(lang.w3i.UNKNOWN_FLAGS, lang.w3i.UNKNOWN_FLAGS_COMMENT)
         self:value(lang.w3i.PLAYER_LIST)
+        self:value(lang.w3i.UNUSED_PLAYER_LIST)
         self:value(lang.w3i.FORCE_NAME)
     end
 end
@@ -201,6 +235,7 @@ end
 function mt:add_randomgroup(data)
     local i = 1
     while self:title(lang.w3i.RANDOM_GROUP..i, data) do
+        self:value 'ID'
         self:value(lang.w3i.RANDOM_GROUP_NAME)
         self:value(lang.w3i.POSITION_TYPE)
 
@@ -219,6 +254,7 @@ end
 function mt:add_randomitem(data)
     local i = 1
     while self:title(lang.w3i.RANDOM_ITEM..i, data) do
+        self:value 'ID'
         self:value(lang.w3i.RANDOM_ITEM_NAME)
 
         self:add(lang.w3i.SETTING .. ' = {')

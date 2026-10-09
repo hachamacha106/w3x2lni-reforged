@@ -1,5 +1,47 @@
 return {
 {
+    version = '1.0.0',
+    { 'NEW', 'First W3x2lni Reforged release, maintained by hachamacha106' },
+    { 'NEW', 'Current Warcraft data, map formats, object skins and trigger support' },
+    { 'FIX', 'Preserve current W3I fields, native profiles and script references' },
+    { 'UI', 'Resizable window with wrapped, selectable and copyable reports' },
+    { 'CHG', 'Verified release packages with source and native-runtime provenance' },
+},
+{
+    version = '2.7.4-current-preview.5',
+    { 'UI', 'Resize, maximize and minimize the main window with native controls' },
+    { 'UI', 'Wrap and scroll full reports; select text or copy the complete log' },
+    { 'UI', 'Read-only report, Ctrl+A/C and keyboard-accessible report buttons' },
+},
+{
+    version = '2.7.4-current-preview.4',
+    { 'CHG', 'Replace all numbered unknown W3I keys with descriptive names' },
+    { 'FIX', 'Correct current fog heights, sky flag and weather field order' },
+    { 'CHG', 'Name minimap alpha color and loading race HUD; explain numeric values' },
+    { 'CHG', 'Testing schema update: regenerate LNI from the original map' },
+},
+{
+    version = '2.7.4-current-preview.3',
+    { 'FIX', 'Restore all current converter scripts in the portable package' },
+    { 'FIX', 'Display full Windows worker errors after embedded NUL separators' },
+    { 'CHG', 'Verify final ZIP contents and run tests from its extracted files' },
+    { 'CHG', 'User reports the supplied practical map checks succeeded' },
+},
+{
+    version = '2.7.4-current-preview.2',
+    { 'NEW', 'Complete supplied game data and current-editor map validation' },
+    { 'FIX', 'Preserve alternate skin localization and current native map files' },
+    { 'FIX', 'Preserve conversation string IDs and current outer map-header flags' },
+    { 'CHG', 'Windows runtime and Warcraft / World Editor acceptance still pending' },
+},
+{
+    version = '2.7.4-current-preview.1',
+    { 'NEW', 'Current Warcraft compatibility preview (2026-10-08)' },
+    { 'CHG', 'Modern map, object, skin, trigger and SLK conversion support' },
+    { 'CHG', 'Incomplete game data stays unavailable until required localization files are supplied' },
+    { 'CHG', 'Windows runtime and Warcraft / World Editor validation are still pending' },
+},
+{
     version = '2.7.4',
     { 'FIX', '修正优化脚本后自定type丢失的问题' },
 },

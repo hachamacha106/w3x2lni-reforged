@@ -1,12 +1,23 @@
 local lang = require 'share.lang'
 local ui = require 'gui.new.template'
 local ev = require 'gui.event'
+local brand = require 'share.brand'
 
 local template = ui.container {
     style = { FlexGrow = 1 },
     font = { size = 16 },
     ui.container {
         style = { FlexGrow = 1 },
+        ui.label {
+            text = brand.name .. ' ' .. (require 'share.changelog')[1].version,
+            text_color = '#CCC',
+            style = { MarginTop = 12, Height = 28 },
+        },
+        ui.label {
+            text = lang.ui.MAINTAINER .. ' ' .. brand.maintainer,
+            text_color = '#AAA',
+            style = { Height = 28 },
+        },
         ui.label {
             text = lang.ui.AUTHOR,
             text_color = '#000',

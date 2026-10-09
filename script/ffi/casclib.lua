@@ -3,7 +3,7 @@ local loaddll = require 'ffi.loaddll'
 
 ffi.cdef[[
     bool CascOpenStorage(const wchar_t* szParams, unsigned long dwLocaleMask, uint32_t* phStorage);
-    bool CascCloseStorage(uint32_t* hStorage);
+    bool CascCloseStorage(uint32_t hStorage);
     bool CascOpenFile(uint32_t hStorage, const char* szFileName, unsigned long dwLocaleFlags, unsigned long dwOpenFlags, uint32_t* PtrFileHandle);
     long CascGetFileSize(uint32_t hFile, long* pdwFileSizeHigh);
     bool CascReadFile(uint32_t hFile, void* lpBuffer, unsigned long dwToRead, unsigned long* pdwRead);
@@ -62,7 +62,7 @@ function archive:close()
     if self.handle == 0 then
         return
     end
-    casclib.CascCloseFile(self.handle)
+    casclib.CascCloseStorage(self.handle)
     self.handle = 0
 end
 

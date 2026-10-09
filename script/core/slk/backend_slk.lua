@@ -1,6 +1,7 @@
 local w3xparser = require 'w3xparser'
 local lang = require 'lang'
 local convertreal = require 'convertreal'
+local schema = require 'slk.schema'
 
 local table_concat = table.concat
 local ipairs = ipairs
@@ -28,6 +29,8 @@ local object
 local default
 local all_slk
 local slk_keys
+local slk_columns
+local level_counts
 local used
 
 local function report_failed(obj, key, tip, info)
@@ -118,7 +121,7 @@ local function add_values(names, skeys, slk_name)
                 or slk_name == 'units\\unitbalance.slk' and (key == 'Primary' or key == 'preventPlace' or key == 'requirePlace')
                 or slk_name == 'units\\unitui.slk' and key == 'file'
                 or slk_name == 'units\\destructabledata.slk' and key == 'texFile'
-                or slk_name == 'units\\abilitydata.slk' and (key == 'targs1' or key == 'targs2' or key == 'targs3' or key == 'targs4')
+                or slk_name == 'units\\abilitydata.slk' and key:match '^targs%d+$'
             then
                 add(x, y+1, '"_"')
             elseif slk_name == 'units\\upgradedata.slk' and key == 'used' then
@@ -234,37 +237,31 @@ local function load_data(meta, obj, key, slk_data, obj_data)
     local tp = meta.type
     if type(obj[key]) == 'table' then
         local over_level
-        obj_data[key] = {}
-        if slk_type == 'doodad' then
-            for i = 11, #obj[key] do
-                if obj[key][i] ~= obj[key][10] then
-                    obj_data[key][i] = obj[key][i]
+        local limit = level_counts[displaykey]
+        if not limit then
+            limit = schema.level_count(slk_columns, displaykey)
+            level_counts[displaykey] = limit
+        end
+        local remainder = obj_data[key] or {}
+        obj_data[key] = remainder
+        for i, raw_value in pairs(obj[key]) do
+            local field = schema.level_field(displaykey, i, slk_type == 'doodad')
+            local column = slk_columns[field:lower()]
+            if not column then
+                -- Warcraft inherits values above the last supported SLK level.
+                -- Keep changes beyond it, and any field absent from the schema,
+                -- in the accompanying object file instead of dropping them.
+                if limit == 0 or i <= limit or raw_value ~= obj[key][limit] then
+                    remainder[i] = raw_value
                     over_level = true
                 end
-            end
-            for i = 1, 10 do
-                local value = to_type(tp, obj[key][i])
+            else
+                local value = to_type(tp, raw_value)
                 if value and tp == 3 and not is_usable_string(value:sub(2, -2)) then
-                    obj_data[key][i] = value:sub(2, -2)
+                    remainder[i] = raw_value
                     report_failed(obj, displaykey, lang.report.STRING_CAN_CONVERT_NUMBER, value)
                 else
-                    slk_data[('%s%02d'):format(displaykey, i)] = value
-                end
-            end
-        else
-            for i = 5, #obj[key] do
-                if obj[key][i] ~= obj[key][4] then
-                    obj_data[key][i] = obj[key][i]
-                    over_level = true
-                end
-            end
-            for i = 1, 4 do
-                local value = to_type(tp, obj[key][i])
-                if value and tp == 3 and not is_usable_string(value:sub(2, -2)) then
-                    obj_data[key][i] = value:sub(2, -2)
-                    report_failed(obj, displaykey, lang.report.STRING_CAN_CONVERT_NUMBER, value)
-                else
-                    slk_data[displaykey..i] = value
+                    slk_data[column] = value
                 end
             end
         end
@@ -272,12 +269,17 @@ local function load_data(meta, obj, key, slk_data, obj_data)
             report_failed(obj, displaykey, lang.report.DATA_LEVEL_TOO_HIGHT, '')
         end
     else
+        local column = slk_columns[displaykey:lower()]
+        if not column then
+            obj_data[key] = obj[key]
+            return
+        end
         local value = to_type(tp, obj[key])
         if value and tp == 3 and not is_usable_string(value:sub(2, -2)) then
             obj_data[key] = value:sub(2, -2)
             report_failed(obj, displaykey, lang.report.STRING_CAN_CONVERT_NUMBER, value)
         else
-            slk_data[displaykey] = value
+            slk_data[column] = value
         end
     end
 end
@@ -299,6 +301,8 @@ local function load_obj(id, obj, slk_name)
         obj_data._code   = obj._code
         obj_data._mark   = obj._mark
         obj_data._parent = obj._parent
+        obj_data._object_version = obj._object_version
+        obj_data._object_data = obj._object_data
         obj_data._keep_obj = obj._keep_obj
     end
     if not obj._slk_id and not is_usable_id(obj._id) then
@@ -369,8 +373,10 @@ return function(w2l_, type, slk_name, chunk, report_, obj, slk_)
     remove_unuse_object = w2l.setting.remove_unuse_object
     lines = {}
     metadata = w2l:metadata()
-    keys = w2l:keydata()[slk_name]
+    keys = w2l:keydata()[slk_name] or {}
     slk_keys = w2l:slktitle()[slk_name]
+    slk_columns = schema.columns(slk_keys)
+    level_counts = {}
     default = w2l:get_default()[type]
     slk_type = type
 

@@ -260,9 +260,9 @@ local function mark_jass(slk, list, flag)
             end
         end
     end
-    if flag.item then
+    if flag.item or flag.all_items then
         for _, obj in pairs(slk.item) do
-            if obj.pickrandom == 1 then
+            if flag.all_items or obj.pickrandom == 1 then
                 current_root = {obj._id, lang.report.REFERENCE_BY_RANDOM_ITEM}
                 mark_known_type(slk, 'item', obj._id)
             end
@@ -274,7 +274,7 @@ local function mark_marketplace(slk, flag)
     if not flag then
         return
     end
-    if not flag.marketplace or flag.item then
+    if not flag.marketplace or flag.item or flag.all_items then
         return
     end
     for _, obj in pairs(slk.unit) do
@@ -292,8 +292,35 @@ local function mark_marketplace(slk, flag)
     end
 end
 
+local function retain_all(slk, reason)
+    for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'destructable', 'doodad', 'misc', 'txt'} do
+        for id, object in pairs(slk[type] or {}) do
+            object._mark = {id, reason}
+        end
+    end
+end
+
+local function has_opaque_references(slk)
+    for _, type in ipairs {'ability', 'buff', 'unit', 'item', 'upgrade', 'destructable', 'doodad'} do
+        for id, object in pairs(slk[type] or {}) do
+            for _, key in ipairs {'_object_extras', '_skin_extras', '_object_data', '_skin_data'} do
+                local value = object[key]
+                if std_type(value) == 'table' and next(value) then
+                    return type .. ' ' .. id .. ': ' .. key
+                end
+            end
+        end
+    end
+end
+
 local function mark_doo(w2l, slk)
-    local destructable, doodad = w2l:backend_searchdoo()
+    local destructable, doodad, items, err = w2l:backend_searchdoo()
+    if err then
+        -- A parser failure cannot establish that an object is unused.
+        retain_all(slk, lang.report.REFERENCE_BY_PLACING)
+        w2l.messager.report(lang.report.OTHER, 2, lang.report.RETAIN_UNKNOWN_DOO, tostring(err))
+        return
+    end
     if not destructable then
         return
     end
@@ -305,6 +332,10 @@ local function mark_doo(w2l, slk)
     for name in pairs(doodad) do
         current_root = {name, lang.report.REFERENCE_BY_PLACING}
         mark_known_type(slk, 'doodad', name)
+    end
+    for name in pairs(items or {}) do
+        current_root = {name, lang.report.REFERENCE_BY_PLACING}
+        mark_known_type(slk, 'item', name)
     end
 end
 
@@ -322,9 +353,9 @@ end
 return function(w2l_, slk_)
     w2l = w2l_
     slk = slk_
-    if not search then
-        search = w2l:parse_lni(w2l:data_load('prebuilt\\search.ini'))
-    end
+    search = w2l:parse_lni(w2l:data_load('prebuilt\\search.ini'))
+    report_once = {}
+    report_cache = {}
     buffmap = {}
     for i in pairs(slk.buff) do
         local li = i:lower()
@@ -336,11 +367,21 @@ return function(w2l_, slk_)
         end
     end
     slk.mustuse = mustuse
-    local jasslist, jassflag = w2l:backend_searchjass()
+    local jasslist, jassflag, script_error = w2l:backend_searchjass()
     mark_mustuse(slk)
-    mark_jass(slk, jasslist, jassflag)
+    if script_error then
+        retain_all(slk, lang.report.REFERENCE_BY_JASS_NAME)
+        w2l.messager.report(lang.report.OTHER, 2, lang.report.RETAIN_UNKNOWN_SCRIPT, script_error)
+    else
+        mark_jass(slk, jasslist, jassflag)
+    end
     mark_doo(w2l, slk)
     mark_lua(w2l, slk)
+    local opaque = has_opaque_references(slk)
+    if opaque then
+        retain_all(slk, lang.report.REFERENCE_BY_MUST_RETAIN)
+        w2l.messager.report(lang.report.OTHER, 2, lang.report.RETAIN_UNKNOWN_OBJECT_REFERENCES, opaque)
+    end
     mark_marketplace(slk, jassflag)
     if #report_cache > 0 then
         w2l.messager.report(lang.report.REMOVE_UNUSED_OBJECT, 4, 'TOTAL:' .. #report_cache)

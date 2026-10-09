@@ -176,7 +176,14 @@ local function load_triggers()
     for i = 3, #list_file do
         local dir = list_file[i]
         local path = dir[1] or dir[2]
-        load_category(dir, 0, path)
+        local parent = wtg.format_version and wtg.unknown8 or 0
+        if wtg.format_version and loader(path .. '.v.lml') then
+            load_var(dir, parent, path)
+        elseif wtg.format_version and is_trigger(dir, path) then
+            load_trigger(dir, parent, path)
+        else
+            load_category(dir, parent, path)
+        end
     end
 end
 

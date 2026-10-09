@@ -1,62 +1,78 @@
 local fs = require 'bee.filesystem'
 local gui = require 'yue.gui'
-local backend = require 'gui.backend'
 local lang = require 'share.lang'
 local ui = require 'gui.new.template'
 local ev = require 'gui.event'
+local set_readonly = require 'ffi.textedit_readonly'
 local root = fs.current_path()
-
-local function count_report_height(text)
-    local n = 1
-    for _ in text:gmatch '\n' do
-        n = n + 1
-    end
-    return n * 15
-end
+local view, data, element
 
 local template = ui.container {
-    style = { FlexGrow = 1 },
-    font = { size = 12 },
-    ui.scroll {
-        style = { FlexGrow = 1, Margin = 2 },
-        hpolicy = 'never',
-        vpolicy = 'never',
-        width = 0,
+    style = { FlexGrow = 1, FlexBasis = 0, MinHeight = 0, Padding = 6 },
+    font = { size = 13 },
+    ui.textedit {
+        id = 'report_text',
+        style = { FlexGrow = 1, FlexBasis = 0, MinHeight = 0 },
+        readonly = true,
+        -- Retain native text/background colors for the old RichEdit control.
+        font = { name = 'Consolas', size = 13 },
         bind = {
-            height = 'report.height'
+            text = 'report.text'
         },
-        ui.container {
-            style = { FlexGrow = 1 },
-            ui.label {
-                style = { FlexGrow = 1 },
-                text_color = '#CCC',
-                align = 'start',
-                valign = 'start',
-                bind = {
-                    text = 'report.text'
-                },
+        on = {
+            tab = function(_, event)
+                if event.modifiers & gui.Event.maskshift ~= 0 then
+                    element.back:focus()
+                else
+                    element.copy_report:focus()
+                end
+            end,
+        },
+    },
+    ui.label {
+        text = lang.ui.COPY_HINT,
+        text_color = '#AAA',
+        align = 'start',
+        font = { size = 12 },
+        style = { Height = 20, FlexShrink = 0, MarginTop = 4 },
+    },
+    ui.container {
+        style = { Height = 32, FlexShrink = 0, FlexDirection = 'row', MarginTop = 4 },
+        ui.button {
+            id = 'copy_report',
+            title = lang.ui.COPY_ALL,
+            style = { FlexGrow = 1, FlexBasis = 0, MarginRight = 4 },
+            bind = {
+                color = 'theme'
+            },
+            on = {
+                click = function()
+                    -- Copy the complete log, independent of selection, wrapping
+                    -- or the native control's representation of line endings.
+                    gui.app:getclipboard('copy-paste'):settext(data.report.text)
+                end
+            }
+        },
+        ui.button {
+            id = 'back',
+            title = lang.ui.BACK,
+            style = { FlexGrow = 1, FlexBasis = 0, MarginLeft = 4 },
+            bind = {
+                color = 'theme'
+            },
+            on = {
+                click = function()
+                    window:show_page('convert')
+                end
             },
         },
     },
-    ui.button {
-        title = lang.ui.BACK,
-        style = { Bottom = 0, Height = 28, Margin = 5 },
-        bind = {
-            color = 'theme'
-        },
-        on = {
-            click = function()
-                window:show_page('convert')
-            end
-        }
-    }
 }
 
-local view, data = ui.create(template, {
+view, data, element = ui.create(template, {
     theme = window._color,
     report = {
         text = '',
-        height = 0
     }
 })
 
@@ -67,8 +83,10 @@ end)
 function view:on_show()
     local text = io.load(root:parent_path() / 'log' / 'report.log') or ''
     data.report.text = text
-    data.report.height = count_report_height(text)
     data.theme = window._color
+    element.report_text:selectrange(0, 0)
+    element.report_text:focus()
+    set_readonly(element.report_text)
 end
 
 return view

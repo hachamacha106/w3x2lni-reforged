@@ -91,13 +91,20 @@ function mt:get_editstring(source)
                 self.editstring[k:upper()] = v
             end
         else
-            local t = ini(self:data_load('mpq\\ui\\WorldEditStrings.txt'))['WorldEditStrings']
-            for k, v in pairs(t) do
-                self.editstring[k:upper()] = v
-            end
-            local t = ini(self:data_load('mpq\\ui\\WorldEditGameStrings.txt'))['WorldEditStrings']
-            for k, v in pairs(t) do
-                self.editstring[k:upper()] = v
+            for _, filename in ipairs {
+                'mpq\\ui\\WorldEditStrings.txt',
+                'mpq\\ui\\WorldEditGameStrings.txt',
+            } do
+                local buf = self:data_load(filename)
+                local t = buf and ini(buf)['WorldEditStrings']
+                if t then
+                    for k, v in pairs(t) do
+                        self.editstring[k:upper()] = v
+                    end
+                else
+                    self.messager.report(lang.report.OTHER, 9,
+                        'Missing editor localization file: ' .. filename)
+                end
             end
         end
     end
@@ -181,13 +188,35 @@ function mt:load_wts(wts, content, max, reason, fmter)
 end
 
 function mt:save_wts(wts, text, reason)
+    if not wts.text_index then
+        wts.text_index = {}
+        for index, value in pairs(wts.mark) do
+            if not wts.text_index[value] or index < wts.text_index[value] then
+                wts.text_index[value] = index
+            end
+        end
+    end
+    local existing = wts.text_index[text]
+    if existing and wts.mark[existing] == text then
+        return ('TRIGSTR_%03d'):format(existing-1)
+    end
     self.messager.report(lang.report.TEXT_IN_WTS, 7, reason, ('%s\r\n%s...\r\n-------------------------'):format(lang.report.TEXT_IN_WTS_HINT, text:sub(1, 1000)))
-    if text:find('}', 1, false) then
+    -- Text parsed successfully from the source WTS must survive verbatim,
+    -- including braces in long object fields and opaque modifications.
+    if text:find('}', 1, false) and not (wts.original_text and wts.original_text[text]) then
         self.messager.report(lang.report.WARN, 2, lang.report.WTS_NEED_ESCAPE, text:sub(1, 1000))
         text = text:gsub('}', '|')
     end
-    local index = #wts.mark + 1
+    local index = wts.next_index
+    if not index then
+        index = 1
+        for used in pairs(wts.mark) do
+            index = math.max(index, used + 1)
+        end
+    end
+    wts.next_index = index + 1
     wts.mark[index] = text
+    wts.text_index[text] = index
     return ('TRIGSTR_%03d'):format(index-1)
 end
 
@@ -196,7 +225,13 @@ function mt:refresh_wts(wts)
         return
     end
     local lines = {}
-    for index, text in ipairs(wts.mark) do
+    local indices = {}
+    for index in pairs(wts.mark) do
+        indices[#indices+1] = index
+    end
+    table.sort(indices)
+    for _, index in ipairs(indices) do
+        local text = wts.mark[index]
         lines[#lines+1] = ('STRING %d\r\n{\r\n%s\r\n}'):format(index-1, text)
     end
     return table.concat(lines, '\r\n\r\n')
@@ -390,12 +425,33 @@ function mt:set_setting(setting)
     choose('computed_text', toboolean)
     choose('export_lua', toboolean)
 
+    setting.version = setting.version or 'Custom'
+    -- Callers also modify self.setting in place before applying it (for example
+    -- when a map selects Melee instead of Custom defaults). Compare a snapshot,
+    -- not the same mutable table, so those changes invalidate cached data too.
+    local previous = rawget(self, '_data_settings')
+    if previous and (previous.data ~= setting.data
+        or previous.data_meta ~= setting.data_meta
+        or previous.data_wes ~= setting.data_wes
+        or previous.data_ui ~= setting.data_ui
+        or previous.version ~= setting.version) then
+        self.cache_metadata = nil
+        self.cache_keydata = nil
+        self.cache_slktitle = nil
+        self.default_data = nil
+        self.editstring = nil
+        self.editstring_reported = nil
+        self.trg = nil
+        self.ydwe_ui = nil
+    end
     self.setting = setting
+    self._data_settings = {
+        data = setting.data, data_meta = setting.data_meta,
+        data_wes = setting.data_wes, data_ui = setting.data_ui,
+        version = setting.version,
+    }
 
     self.mpq_path = mpq_path()
-    if not self.setting.version then
-        self.setting.version = 'Custom'
-    end
     if self.setting.version == 'Custom' then
         self.mpq_path:open 'Custom_V1'
     end

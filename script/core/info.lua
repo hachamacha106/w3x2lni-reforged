@@ -93,6 +93,9 @@ return {
 
         'units\\destructableskin.txt',
     },
+    txt_optional = {
+        'units\\unitweaponsfunc.txt',
+    },
     reforge = {
         'units\\unitskin.txt',
         'units\\unitweaponsskin.txt',
@@ -112,6 +115,27 @@ return {
         doodad  = 'doodads\\doodadskins.txt',
         destructable = 'units\\orcunitstrings.txt',
     },
+    -- Prebuilt keydata records which fields the selected game build stores in
+    -- these profiles. Older datasets without that schema retain txt_out.
+    profile_skin = {
+        unit = {'units\\unitskin.txt', 'units\\unitweaponsskin.txt', 'units\\unitweaponsfunc.txt'},
+        item = {'units\\itemskin.txt'},
+        ability = {'units\\abilityskin.txt'},
+        buff = {'units\\abilityskin.txt'},
+        upgrade = {'units\\upgradeskin.txt'},
+        doodad = {'doodads\\doodadskins.txt'},
+        destructable = {'units\\destructableskin.txt'},
+    },
+    -- Optional localized names for alternate skins. Keep these separate from
+    -- profile_skin so ordinary object names retain their normal TXT routing.
+    profile_strings = {
+        unit = {'units\\unitskinstrings.txt'},
+        item = {'units\\itemskinstrings.txt'},
+        ability = {'units\\abilityskinstrings.txt'},
+        buff = {'units\\abilityskinstrings.txt'},
+        upgrade = {'units\\upgradeskinstrings.txt'},
+        destructable = {'units\\destructableskinstrings.txt'},
+    },
     misc = {
         'ui\\miscdata.txt',
         'units\\miscdata.txt',
@@ -126,14 +150,27 @@ return {
     },
     pack = {
         impignore = {
+            'conversation.json',
             'war3map.j',
+            'war3map.lua',
+            'scripts\\war3map.j',
+            'scripts\\war3map.lua',
+            'war3mapskin.w3a',
+            'war3mapskin.w3b',
+            'war3mapskin.w3d',
+            'war3mapskin.w3h',
+            'war3mapskin.w3q',
+            'war3mapskin.w3t',
+            'war3mapskin.w3u',
             'war3map.doo',
             'war3map.imp',
             'war3map.mmp',
             'war3map.shd',
             'war3map.w3c',
             'war3map.w3e',
+            'war3map.w3grp',
             'war3map.w3i',
+            'war3map.w3l',
             'war3map.w3r',
             'war3map.w3s',
             'war3map.wct',

@@ -17,7 +17,7 @@ return function (t, data)
         btn:setstyle(t.style)
     end
     if t.on and t.on.click then
-        function btn:onmousedown()
+        function btn:onclick()
             t.on.click(self, t)
         end
     end

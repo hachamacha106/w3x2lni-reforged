@@ -80,3 +80,9 @@ Change log
 To 
 [ADVANCED]
 Advanced
+[COPY_ALL]
+Copy all
+[COPY_HINT]
+Ctrl+A: select all   Ctrl+C: copy selection
+[MAINTAINER]
+Maintainer:

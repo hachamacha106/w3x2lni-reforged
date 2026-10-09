@@ -1,4 +1,4 @@
-local messager = require 'share.messager'
+local messager
 local lang = require 'share.lang'
 local key_cache = {}
 local function get_key(w2l, type, id)
@@ -164,6 +164,8 @@ local function get_codemapped(w2l, loader)
 end
 
 return function(w2l, loader_)
+    messager = w2l.messager
+    key_cache = {}
     loader = loader_
     codemapped = get_codemapped(w2l, loader)
     messager.text(lang.raw.CREATING .. 'search')

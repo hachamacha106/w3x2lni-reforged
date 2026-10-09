@@ -1,0 +1,12 @@
+Warcraft III extracted-data import
+Dataset: warcraft-current
+Game build: unverified
+Locale: unverified
+Status: required input files present
+Game and World Editor validation: not performed by this importer
+
+No Custom_V1 balance overrides were supplied; Custom uses the supplied base tables.
+Export the balance layer too if the installation provides different custom-game defaults.
+
+Melee: ability=1556, buff=328, unit=928, item=649, upgrade=90, doodad=771, destructable=344, misc=12, txt=4695
+Custom: ability=1556, buff=328, unit=928, item=649, upgrade=90, doodad=771, destructable=344, misc=12, txt=4695

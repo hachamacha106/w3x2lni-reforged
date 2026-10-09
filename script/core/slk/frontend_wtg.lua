@@ -42,93 +42,105 @@ end
 
 local function unpack(fmt)
     local result
-    result, unpack_index = fmt:unpack(wtg, unpack_index)
+    result, unpack_index = ('<' .. fmt):unpack(wtg, unpack_index)
     return result
+end
+
+local function is_deleted(list, id)
+    return list and (list[id] or list[id & 0xFFFFFF])
 end
 
 local function read_head()
     local id  = unpack 'c4'
     assert(id == 'WTG!', lang.script.WTG_ERROR)
-    local ver = unpack 'L'
+    local ver = unpack 'I4'
     if ver <= 7 then
         assert(ver == 7, lang.script.WTG_VERSION_ERROR)
     else
         assert(ver == 0x80000004, lang.script.WTG_VERSION_ERROR)
         chunk.format_version = 1.31
-        ver = unpack 'L'
+        ver = unpack 'I4'
         assert(ver == 7, lang.script.WTG_VERSION_ERROR)
-        chunk.unknown1 = unpack 'L'
-        chunk.unknown2 = unpack 'L'
-        chunk.unknown3 = unpack 'L'
-        chunk.unknown4 = unpack 'L'
+        chunk.unknown1 = unpack 'I4'
+        chunk.unknown2 = unpack 'I4'
+        chunk.deleted_maps = {}
+        for i = 1, chunk.unknown2 do
+            chunk.deleted_maps[i] = unpack 'I4'
+        end
+        chunk.unknown3 = unpack 'I4'
+        chunk.unknown4 = unpack 'I4'
+        chunk.deleted_libraries = {}
+        for i = 1, chunk.unknown4 do
+            chunk.deleted_libraries[i] = unpack 'I4'
+        end
     end
 end
 
 local function read_counts()
-    chunk.category_count = unpack 'L'
-    local deleted_category_count = unpack 'L'
+    chunk.category_count = unpack 'I4'
+    local deleted_category_count = unpack 'I4'
     chunk.deleted_categories = {}
     for i = 1, deleted_category_count do
-        chunk.deleted_categories[unpack 'L'] = true
+        chunk.deleted_categories[unpack 'I4'] = true
     end
 
-    chunk.trigger_count = unpack 'L'
-    local deleted_trigger_count = unpack 'L'
+    chunk.trigger_count = unpack 'I4'
+    local deleted_trigger_count = unpack 'I4'
     chunk.deleted_triggers = {}
     for i = 1, deleted_trigger_count do
-        chunk.deleted_triggers[unpack 'L'] = true
+        chunk.deleted_triggers[unpack 'I4'] = true
     end
 
-    chunk.trigger_comment_count = unpack 'L'
-    local deleted_comment_count = unpack 'L'
+    chunk.trigger_comment_count = unpack 'I4'
+    local deleted_comment_count = unpack 'I4'
     chunk.deleted_comments = {}
     for i = 1, deleted_comment_count do
-        chunk.deleted_comments[unpack 'L'] = true
+        chunk.deleted_comments[unpack 'I4'] = true
     end
 
-    chunk.custom_script_count = unpack 'L'
-    local deleted_script_count = unpack 'L'
+    chunk.custom_script_count = unpack 'I4'
+    local deleted_script_count = unpack 'I4'
     chunk.deleted_scripts = {}
     for i = 1, deleted_script_count do
-        chunk.deleted_scripts[unpack 'L'] = true
+        chunk.deleted_scripts[unpack 'I4'] = true
     end
 
-    chunk.variable_count = unpack 'L'
-    local deleted_variables_count = unpack 'L'
+    chunk.variable_count = unpack 'I4'
+    local deleted_variables_count = unpack 'I4'
     chunk.deleted_variables = {}
     for i = 1, deleted_variables_count do
-        chunk.deleted_variables[unpack 'L'] = true
+        chunk.deleted_variables[unpack 'I4'] = true
     end
 
-    chunk.unknown5 = unpack 'L'
-    chunk.unknown6 = unpack 'L'
+    chunk.unknown5 = unpack 'I4'
+    chunk.unknown6 = unpack 'I4'
 end
 
 local function read_category()
     local category = {}
     category.obj     = 'category'
-    category.id      = unpack 'l'
+    category.id      = unpack 'i4'
     category.name    = unpack 'z'
-    category.comment = unpack 'l'
+    category.comment = unpack 'i4'
 
     if chunk.format_version then
-        category.unknown1 = unpack 'l'
-        category.category = unpack 'L'
+        category.unknown1 = unpack 'i4'
+        category.category = unpack 'I4'
         category.childs = {}
 
         -- 删除掉的目录直接丢掉
-        if chunk.deleted_categories[category.id] then
-            return nil
-        end
+        category.deleted = is_deleted(chunk.deleted_categories, category.id)
     end
 
-    chunk.categories[#chunk.categories+1] = category
+    if not chunk.format_version then
+        chunk.categories[#chunk.categories+1] = category
+    end
 
     return category
 end
 
 local function read_categories()
-    local count = unpack 'l'
+    local count = unpack 'i4'
     for i = 1, count do
         read_category()
     end
@@ -137,11 +149,11 @@ end
 local function read_var()
     local name    = unpack 'z'
     local type    = unpack 'z'
-    local unknow  = unpack 'l'
+    local unknow  = unpack 'i4'
     assert(unknow == 1, lang.script.UNKNOWN2_ERROR)
-    local array   = unpack 'l'
-    local size    = unpack 'l'
-    local default = unpack 'l'
+    local array   = unpack 'i4'
+    local size    = unpack 'i4'
+    local default = unpack 'i4'
     local value   = unpack 'z'
 
     local var = { name, type }
@@ -153,9 +165,9 @@ local function read_var()
     end
 
     if chunk.format_version then
-        var.id = unpack 'L'
-        var.category = unpack 'L'
-        if chunk.deleted_variables[var.id] then
+        var.id = unpack 'I4'
+        var.category = unpack 'I4'
+        if is_deleted(chunk.deleted_variables, var.id) then
             -- 既然有git管理，删除掉的变量直接丢掉
             return nil
         end
@@ -167,11 +179,14 @@ local function read_var()
 end
 
 local function read_vars()
-    local unknow = unpack 'l'
+    local unknow = unpack 'i4'
     assert(unknow == 2, lang.script.UNKNOWN1_ERROR)
-    local count = unpack 'l'
+    local count = unpack 'i4'
     for i = 1, count do
-        chunk.vars[i] = read_var()
+        local var = read_var()
+        if var then
+            chunk.vars[#chunk.vars+1] = var
+        end
     end
 end
 
@@ -190,16 +205,16 @@ local type_index = {
 }
 
 local function read_arg()
-    local type        = unpack 'l'
+    local type        = unpack 'i4'
     local value       = unpack 'z'
     local arg
 
-    local insert_call = unpack 'l'
+    local insert_call = unpack 'i4'
     if insert_call == 1 then
         arg = (read_eca(false, true))
     end
 
-    local insert_index = unpack 'l'
+    local insert_index = unpack 'i4'
     if insert_index == 1 then
         arg = { lang.lml.ARRAY, value, read_arg() }
     end
@@ -240,13 +255,13 @@ local function read_ecas(parent, count, is_child, multi_list)
 end
 
 function read_eca(is_child, is_arg)
-    local type = unpack 'l'
+    local type = unpack 'i4'
     local child_id
     if is_child then
-        child_id = unpack 'l'
+        child_id = unpack 'i4'
     end
     local name = unpack 'z'
-    local enable = unpack 'l'
+    local enable = unpack 'i4'
 
     local eca
     if enable == 0 then
@@ -274,96 +289,54 @@ function read_eca(is_child, is_arg)
         end
     end
 
-    local count = unpack 'l'
+    local count = unpack 'i4'
     if count > 0 then
         read_ecas(eca, count, true, multiple[name])
     end
     return eca, type, child_id or type
 end
 
-local function read_trigger()
+local function read_trigger(deleted)
     local trigger = {}
     trigger.obj      = 'trigger'
     trigger.name     = unpack 'z'
     trigger.des      = unpack 'z'
-    trigger.type     = unpack 'l'
+    trigger.type     = unpack 'i4'
     if chunk.format_version then
-        trigger.id   = unpack 'L'
+        trigger.id   = unpack 'I4'
     end
-    trigger.enable   = unpack 'l'
-    trigger.wct      = unpack 'l'
-    trigger.close    = unpack 'l'
-    trigger.run      = unpack 'l'
-    trigger.category = unpack 'l'
+    trigger.enable   = unpack 'i4'
+    trigger.wct      = unpack 'i4'
+    trigger.close    = unpack 'i4'
+    trigger.run      = unpack 'i4'
+    trigger.category = unpack 'i4'
 
     trigger.trg = { '', false }
-    local count = unpack 'l'
+    local count = unpack 'i4'
     read_ecas(trigger.trg, count, false, {lang.lml.EVENT, lang.lml.CONDITION, lang.lml.ACTION})
 
-    -- 删除掉的触发直接丢掉
-    if chunk.deleted_triggers and chunk.deleted_triggers[trigger.id & 0xffffff] then
-        return nil
+    if chunk.format_version then
+        if trigger.type == 0 then
+            chunk.wct_count = (chunk.wct_count or 0) + 1
+            trigger.wct_index = chunk.wct_count
+        end
+        trigger.deleted = is_deleted(deleted or chunk.deleted_triggers, trigger.id)
+    else
+        chunk.triggers[#chunk.triggers+1] = trigger
     end
-
-    if not chunk.triggers then
-        chunk.triggers = {}
-    end
-    chunk.triggers[#chunk.triggers+1] = trigger
     return trigger
 end
 
 local function read_comment()
-    local trigger = {}
-    trigger.obj      = 'trigger'
-    trigger.name     = unpack 'z'
-    trigger.des      = unpack 'z'
-    trigger.type     = unpack 'l'
-    if chunk.format_version then
-        trigger.id   = unpack 'L'
-    end
-    trigger.enable   = unpack 'l'
-    trigger.wct      = unpack 'l'
-    trigger.close    = unpack 'l'
-    trigger.run      = unpack 'l'
-    trigger.category = unpack 'l'
-    local count = unpack 'l'
-
-    -- 删除掉的触发直接丢掉
-    if chunk.deleted_comments and chunk.deleted_comments[trigger.id & 0xffffff] then
-        return nil
-    end
-
-    chunk.triggers[#chunk.triggers+1] = trigger
-    return trigger
+    return read_trigger(chunk.deleted_comments)
 end
 
 local function read_script()
-    local trigger = {}
-    trigger.obj      = 'trigger'
-    trigger.name     = unpack 'z'
-    trigger.des      = unpack 'z'
-    trigger.type     = unpack 'l'
-    if chunk.format_version then
-        trigger.id   = unpack 'L'
-    end
-    trigger.enable   = unpack 'l'
-    trigger.wct      = unpack 'l'
-    trigger.close    = unpack 'l'
-    trigger.run      = unpack 'l'
-    trigger.category = unpack 'l'
-    local count = unpack 'l'
-
-    -- 删除掉的触发直接丢掉
-    if chunk.deleted_scripts and chunk.deleted_scripts[trigger.id & 0xffffff] then
-        return nil
-    end
-
-    chunk.triggers[#chunk.triggers+1] = trigger
-    return trigger
+    return read_trigger(chunk.deleted_scripts)
 end
 
 local function read_triggers()
-    local count = unpack 'l'
+    local count = unpack 'i4'
     for i = 1, count do
         read_trigger()
     end
@@ -372,22 +345,18 @@ end
 local function read_var_in_element()
     local trgvar = {
         obj      = 'var',
-        id       = unpack 'L',
+        id       = unpack 'I4',
         name     = unpack 'z',
-        category = unpack 'L',
+        category = unpack 'I4',
     }
 
     -- 删除掉的触发直接丢掉
-    if chunk.deleted_variables and chunk.deleted_variables[trgvar.id & 0xffffff] then
-        return nil
-    end
-
-    chunk.trgvars[#chunk.trgvars+1] = trgvar
+    trgvar.deleted = is_deleted(chunk.deleted_variables, trgvar.id)
     return trgvar
 end
 
 local function read_element(n)
-    local classifier = unpack 'l'
+    local classifier = unpack 'i4'
     local ele
     if classifier == 4 then
         ele = read_category()
@@ -399,6 +368,8 @@ local function read_element(n)
         ele = read_script()
     elseif classifier == 64 then
         ele = read_var_in_element()
+    else
+        error(('Unsupported WTG element classifier: %d'):format(classifier))
     end
     if not ele then
         return nil
@@ -410,13 +381,25 @@ local function read_element(n)
     while true do
         local parent = chunk.cate_stack[#chunk.cate_stack]
         if parent.id == ele.category then
-            parent.childs[#parent.childs+1] = ele
+            ele.deleted = ele.deleted or parent.deleted
+            if not ele.deleted then
+                parent.childs[#parent.childs+1] = ele
+                if classifier == 4 then
+                    chunk.categories[#chunk.categories+1] = ele
+                elseif classifier == 64 then
+                    chunk.trgvars[#chunk.trgvars+1] = ele
+                else
+                    chunk.triggers[#chunk.triggers+1] = ele
+                end
+            elseif classifier == 64 then
+                chunk.deleted_variable_elements[ele.id] = true
+            end
             if classifier == 4 then
                 chunk.cate_stack[#chunk.cate_stack+1] = ele
             end
             break
         end
-        assert(parent.id ~= 0)
+        assert(parent ~= chunk.root, 'WTG element has no matching parent category')
         chunk.cate_stack[#chunk.cate_stack] = nil
     end
 
@@ -424,22 +407,32 @@ local function read_element(n)
 end
 
 local function read_elements()
-    local count = unpack 'L' - 1
-    chunk.unknown7 = unpack 'l'
-    chunk.unknown8 = unpack 'l'
+    local count = unpack 'I4' - 1
+    chunk.unknown7 = unpack 'i4'
+    chunk.unknown8 = unpack 'i4'
     chunk.map_name = unpack 'z'
-    chunk.unknown9 = unpack 'l'
-    chunk.unknown10 = unpack 'l'
-    chunk.unknown11 = unpack 'l'
+    chunk.unknown9 = unpack 'i4'
+    chunk.unknown10 = unpack 'i4'
+    chunk.unknown11 = unpack 'i4'
 
     chunk.sort = {}
     chunk.trgvars = {}
-    chunk.root = { id = 0, childs = {} }
+    chunk.root = { id = chunk.unknown8, childs = {} }
     chunk.cate_stack = { chunk.root }
+    chunk.deleted_variable_elements = {}
     for i = 1, count do
         local obj = read_element(i)
-        chunk.sort[obj] = i
+        if obj and not obj.deleted then
+            chunk.sort[obj] = i
+        end
     end
+    local vars = {}
+    for _, var in ipairs(chunk.vars) do
+        if not chunk.deleted_variable_elements[var.id] then
+            vars[#vars+1] = var
+        end
+    end
+    chunk.vars = vars
 end
 
 return function (w2l_, wtg_)
@@ -463,6 +456,8 @@ return function (w2l_, wtg_)
         read_vars()
         read_triggers()
     end
+
+    assert(unpack_index == #wtg + 1, 'Unparsed war3map.wtg data')
 
     return chunk
 end

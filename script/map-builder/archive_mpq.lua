@@ -18,15 +18,20 @@ local function get_map_flag(w3i)
          | w3i[lang.w3i.CONFIG][lang.w3i.MAP_MENU_MARK]            << 10
          | w3i[lang.w3i.CONFIG][lang.w3i.SHOW_WAVE_ON_CLIFF]       << 11
          | w3i[lang.w3i.CONFIG][lang.w3i.SHOW_WAVE_ON_ROLLING]     << 12
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_1]                << 13
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_2]                << 14
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_3]                << 15
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_4]                << 16
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_5]                << 17
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_6]                << 18
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_7]                << 19
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_8]                << 20
-         | w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_9]                << 21
+         | w3i[lang.w3i.CONFIG][lang.w3i.USE_TERRAIN_FOG]                << 13
+         | w3i[lang.w3i.CONFIG][lang.w3i.REQUIRES_EXPANSION]                << 14
+         | w3i[lang.w3i.CONFIG][lang.w3i.USE_ITEM_CLASSIFICATION]                << 15
+         | w3i[lang.w3i.CONFIG][lang.w3i.USE_WATER_TINTING]                << 16
+         | w3i[lang.w3i.CONFIG][lang.w3i.ACCURATE_PROBABILITY]                << 17
+         | w3i[lang.w3i.CONFIG][lang.w3i.CUSTOM_ABILITY_SKINS]                << 18
+         | w3i[lang.w3i.CONFIG][lang.w3i.DISABLE_DENY_ICON]                << 19
+         | w3i[lang.w3i.CONFIG][lang.w3i.FORCE_DEFAULT_ZOOM]                << 20
+         | w3i[lang.w3i.CONFIG][lang.w3i.FORCE_MAX_ZOOM]                << 21
+         | (w3i[lang.w3i.CONFIG][lang.w3i.FORCE_MIN_ZOOM] or 0)     << 22
+         | (w3i[lang.w3i.CONFIG][lang.w3i.OVERRIDE_HD_WATER_COLOR] or 0) << 23
+         | (w3i[lang.w3i.CONFIG][lang.w3i.ALPHA_TILE_MINIMAP_COLOR] or 0) << 24
+         | (w3i[lang.w3i.CONFIG][lang.w3i.DYNAMIC_MINIMAP] or 0)    << 25
+         | ((w3i[lang.w3i.CONFIG][lang.w3i.UNKNOWN_FLAGS] or 0) & 0xFC000000)
 end
 
 local function get_player_count(w3i)
@@ -55,14 +60,14 @@ function mt:save(path, w3i, w3f, filecount, args)
             hexs[#hexs+1] = ('c4'):pack('HM3W')
             hexs[#hexs+1] = ('c4'):pack('\0\0\0\0')
             hexs[#hexs+1] = ('z'):pack(w3f and w3f.campaign_name or '未命名战役')
-            hexs[#hexs+1] = ('l'):pack(0)
-            hexs[#hexs+1] = ('l'):pack(1)
+            hexs[#hexs+1] = ('<I4'):pack(0)
+            hexs[#hexs+1] = ('<i4'):pack(1)
         else
             hexs[#hexs+1] = ('c4'):pack('HM3W')
             hexs[#hexs+1] = ('c4'):pack('\0\0\0\0')
             hexs[#hexs+1] = ('z'):pack(w3i and w3i[lang.w3i.MAP][lang.w3i.MAP_NAME] or '未命名地图')
-            hexs[#hexs+1] = ('l'):pack(get_map_flag(w3i))
-            hexs[#hexs+1] = ('l'):pack(w3i and get_player_count(w3i) or 233)
+            hexs[#hexs+1] = ('<I4'):pack(get_map_flag(w3i))
+            hexs[#hexs+1] = ('<i4'):pack(w3i and get_player_count(w3i) or 233)
         end
     end
     io.save(path, table.concat(hexs))

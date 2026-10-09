@@ -1,5 +1,6 @@
 local w3xparser = require 'w3xparser'
 local lang = require 'lang'
+local schema = require 'slk.schema'
 
 local math_floor = math.floor
 local pairs = pairs
@@ -15,6 +16,8 @@ local w2l
 local metadata
 local keydata
 local slk_type
+local slk_columns
+local slk_level_limit
 
 local function slk_to_type(tp, value)
     if tp == 0 then
@@ -46,27 +49,47 @@ local function slk_to_type(tp, value)
 end
 
 local function slk_read_data(obj, key, meta, data)
+    local function field_value(field)
+        -- Profile Name and UnitUI's internal name are distinct fields. Keep
+        -- exact spelling for profile fallbacks so internal names cannot replace
+        -- localized display names from the string tables.
+        if meta.profile then return data[field] end
+        local column = slk_columns[field:lower()]
+        return column and data[column]
+    end
     if meta['repeat'] then
-        if meta.profile and not data[meta.field..'1'] then
+        if meta.profile and not field_value(schema.level_field(meta.field, 1, slk_type == 'doodad')) then
             return
         end
         local type = meta.type
         local t = {}
-        if slk_type == 'doodad' then
-            for i = 1, 10 do
-                t[i] = slk_to_type(type, data[('%s%02d'):format(meta.field, i)])
-            end
-        else
-            for i = 1, 4 do
-                t[i] = slk_to_type(type, data[meta.field..i])
-            end
+        local limit = math.max(meta['repeat'], slk_level_limit)
+        for i = 1, limit do
+            local field = schema.level_field(meta.field, i, slk_type == 'doodad')
+            t[i] = slk_to_type(type, field_value(field))
         end
         obj[key] = t
     else
-        if meta.profile and not data[meta.field] then
+        local value = field_value(meta.field)
+        -- Current model metadata uses indexed profile fields. Older maps can
+        -- still carry the first model in the former scalar SLK file column.
+        if value == nil and meta.profile and meta.index == 1 then
+            value = field_value(meta.key)
+        end
+        if meta.profile and value == nil then
             return
         end
-        obj[key] = slk_to_type(meta.type, data[meta.field])
+        obj[key] = slk_to_type(meta.type, value)
+    end
+end
+
+local function update_slk_level_limit(metas)
+    for _, meta in pairs(metas) do
+        if type(meta) == 'table' and meta['repeat'] and not meta.profile then
+            local limit = schema.level_count(slk_columns, meta.field)
+            assert(limit <= 10000, 'SLK level count exceeds the supported object-level limit')
+            slk_level_limit = math.max(slk_level_limit, limit)
+        end
     end
 end
 
@@ -302,9 +325,21 @@ return function(w2l_, loader)
     for _, filename in pairs(w2l.info.txt) do
         w2l:parse_txt(loader(filename) or '', filename, txt)
     end
+    for _, filename in ipairs(w2l.info.txt_optional or {}) do
+        w2l:parse_txt(loader(filename) or '', filename, txt)
+    end
     if w2l:isreforge() then
         for _, filename in pairs(w2l.info.reforge) do
             w2l:parse_txt(loader(filename) or '', filename, txt)
+        end
+        local loaded = {}
+        for _, filenames in pairs(w2l.info.profile_strings or {}) do
+            for _, filename in ipairs(filenames) do
+                if keydata[filename] and not loaded[filename] then
+                    loaded[filename] = true
+                    w2l:parse_txt(loader(filename) or '', filename, txt)
+                end
+            end
         end
     end
     for _, filename in pairs(w2l.info.misc) do
@@ -323,7 +358,7 @@ return function(w2l_, loader)
             for i, filename in ipairs(w2l.info.slk[type]) do
                 local keys = {}
                 local meta = {}
-                for _, key in ipairs(keydata[filename]) do
+                for _, key in ipairs(keydata[filename] or {}) do
                     keys[#keys+1] = key
                     meta[#meta+1] = metadata[type][key]
                 end
@@ -333,7 +368,18 @@ return function(w2l_, loader)
                         meta[#meta+1] = metadata[type][key]
                     end
                 end
-                local slk = w2l:parse_slk(loader(filename))
+                local buffer = loader(filename)
+                slk_columns = schema.columns(schema.titles(buffer))
+                slk_level_limit = 0
+                update_slk_level_limit(meta)
+                local slk = w2l:parse_slk(buffer)
+                local seen_codes = {}
+                for _, row in pairs(slk) do
+                    if row.code and not seen_codes[row.code] and metadata[row.code] then
+                        seen_codes[row.code] = true
+                        update_slk_level_limit(metadata[row.code])
+                    end
+                end
                 slk_read(datas[type], slk, keys, meta)
                 slk_private(datas[type], slk)
                 if level_key then

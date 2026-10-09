@@ -54,6 +54,8 @@ Retained creep units
 Retained creep buildings
 [RETAIN_RANDOM_ITEM]
 Retained random items
+[RETAIN_ALL_ITEMS]
+Retained all items because the script can bypass random-item eligibility
 [SYNTAX_ERROR]
 JASS syntax error
 [TEXT_CANT_ESCAPE_IN_TXT]
@@ -190,3 +192,9 @@ Channel '%s' [%s] can't cast
 Spell Book '%s' [%s] will be merged
 [ERROR_ORDER]
 Base order ID '%s' invalid
+[RETAIN_UNKNOWN_DOO]
+Object pruning was skipped because the placement file could not be read completely.
+[RETAIN_UNKNOWN_SCRIPT]
+All objects were retained because script references could not be analyzed completely.
+[RETAIN_UNKNOWN_OBJECT_REFERENCES]
+All objects were retained because preserved object data may contain unknown references.

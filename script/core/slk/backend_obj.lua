@@ -21,6 +21,9 @@ local default
 local hexs
 local wts
 local ttype
+local output_skin
+local skin_lookup
+local object_version
 
 local function format_value(value)
     if type(value) == 'table' then
@@ -41,22 +44,28 @@ local function report(reason, obj, key, tip)
 end
 
 local function write(format, ...)
-    hexs[#hexs+1] = (format):pack(...)
+    hexs[#hexs+1] = ('<' .. format):pack(...)
 end
 
-local function write_value(meta, level, obj, value)
-    local id = meta.id
-    local tp = meta.type
-    write('c4l', id .. ('\0'):rep(4 - #id), tp)
-    if has_level then
-        write('l', level)
-        write('l', meta.data or 0)
+local function should_write(obj, id, level)
+    local fields = skin_lookup[obj]
+    if not fields then
+        fields = {}
+        for _, field in ipairs(obj._skin_fields or {}) do
+            fields[field] = true
+        end
+        skin_lookup[obj] = fields
     end
+    local in_skin = fields[id .. ':' .. (level == 0 and 1 or level)] or false
+    return in_skin == output_skin
+end
+
+local function write_typed_value(tp, obj, id, value)
     if tp == 0 then
         if math_type(value) ~= 'integer' then
             value = math_floor(wtonumber(value))
         end
-        write('l', value)
+        write('i4', value)
     elseif tp == 1 or tp == 2 then
         write('c4', float2bin(value)) -- obj 的浮点数用api转换为二进制
     else
@@ -72,10 +81,21 @@ local function write_value(meta, level, obj, value)
         end
         write('z', value)
     end
+end
+
+local function write_value(meta, level, obj, value)
+    local id = meta.id
+    local tp = meta.type
+    write('c4i4', id .. ('\0'):rep(4 - #id), tp)
+    if has_level then
+        write('i4', level)
+        write('i4', meta.data or 0)
+    end
+    write_typed_value(tp, obj, id, value)
     write('c4', '\0\0\0\0')
 end
 
-local function write_data(key, obj, data, meta)
+local function each_value(data, meta, callback)
     if meta['repeat'] then
         if type(data) ~= 'table' then
             data = {data}
@@ -84,28 +104,22 @@ local function write_data(key, obj, data, meta)
     if type(data) == 'table' then
         local max_level = 0
         for level in pairs(data) do
-            if level > max_level then
+            if type(level) == 'number' and level > max_level and math_type(level) == 'integer' then
                 max_level = level
             end
         end
         for level = 1, max_level do
             if data[level] then
-                write_value(meta, level, obj, data[level])
+                callback(level, data[level])
             end
         end
     else
-        write_value(meta, 0, obj, data)
+        callback(0, data)
     end
 end
 
-local function write_object(chunk, name, obj)
-    local keys = {}
+local function object_metadata(obj)
     local metas = {}
-    for key in pairs(obj) do
-        if key:sub(1, 1) ~= '_' then
-            keys[#keys+1] = key
-        end
-    end
     local code = obj._code
     if metadata[ttype] then
         for key, meta in pairs(metadata[ttype]) do
@@ -117,6 +131,29 @@ local function write_object(chunk, name, obj)
             metas[key] = meta
         end
     end
+    return metas
+end
+
+local function extra_modifications(obj)
+    return (output_skin and obj._skin_extras or not output_skin and obj._object_extras) or {}
+end
+
+local function is_original(name, obj)
+    if output_skin and obj._skin_original ~= nil then
+        return obj._skin_original
+    end
+    local parent = obj._slk_id or obj._parent
+    return (name == parent or obj._slk) and not obj._slk_id
+end
+
+local function write_object(chunk, name, obj)
+    local keys = {}
+    local metas = object_metadata(obj)
+    for key in pairs(obj) do
+        if key:sub(1, 1) ~= '_' then
+            keys[#keys+1] = key
+        end
+    end
     table_sort(keys)
 
     local count = 0
@@ -124,14 +161,12 @@ local function write_object(chunk, name, obj)
         local data = obj[key]
         if data then
             if metas[key] then
-                if type(data) == 'table' then
-                    for _ in pairs(data) do
+                each_value(data, metas[key], function(level)
+                    if should_write(obj, metas[key].id, level) then
                         count = count + 1
                     end
-                else
-                    count = count + 1
-                end
-            else
+                end)
+            elseif not output_skin then
                 if type(data) == 'table' then
                     if next(data) then
                         report(lang.report.INVALID_OBJECT_DATA, obj, key, obj[key])
@@ -143,28 +178,50 @@ local function write_object(chunk, name, obj)
         end
     end
     
-    local parent = obj._slk_id or obj._parent
-    if (name == parent or obj._slk) and not obj._slk_id then
-        write('c4', name)
+    local parent = output_skin and obj._skin_parent or obj._slk_id or obj._parent
+    if is_original(name, obj) then
+        write('c4', output_skin and parent or name)
         write('c4', '\0\0\0\0')
     else
         write('c4', parent)
         write('c4', name)
     end
-    write('l', count)
+    if object_version == 3 then
+        local data = (output_skin and obj._skin_data or not output_skin and obj._object_data) or {}
+        write('i4', #data)
+        for _, value in ipairs(data) do
+            write('i4', value)
+        end
+    end
+    local extras = extra_modifications(obj)
+    write('i4', count + #extras)
     for _, key in ipairs(keys) do
         local data = obj[key]
         if data then
             if metas[key] then
-                write_data(key, obj, obj[key], metas[key])
+                each_value(data, metas[key], function(level, value)
+                    if should_write(obj, metas[key].id, level) then
+                        write_value(metas[key], level, obj, value)
+                    end
+                end)
             end
         end
+    end
+    for _, modification in ipairs(extras) do
+        local id, tp, level, pointer, value, terminal = table.unpack(modification)
+        assert(type(id) == 'string' and #id <= 4 and #id > 0 and (tp == 0 or tp == 1 or tp == 2 or tp == 3), 'Invalid preserved object modification.')
+        write('c4i4', id .. ('\0'):rep(4 - #id), tp)
+        if has_level then
+            write('i4i4', level, pointer)
+        end
+        write_typed_value(tp, obj, id, value)
+        write('i4', terminal)
     end
 end
 
 local function write_chunk(names, data, n, max)
     local clock = os_clock()
-    write('l', #names)
+    write('i4', #names)
     for i, name in ipairs(names) do
         write_object(data, name, data[name])
         if os_clock() - clock > 0.1 then
@@ -176,7 +233,7 @@ local function write_chunk(names, data, n, max)
 end
 
 local function write_head()
-    write('l', 2)
+    write('i4', object_version)
 end
 
 local function is_enable_obj(name, obj, remove_unuse_object)
@@ -189,6 +246,27 @@ local function is_enable_obj(name, obj, remove_unuse_object)
     end
     if not default[obj._parent] then
         w2l.messager.report(lang.report.INVALID_OBJECT, 6, ('[%s:%s] %s'):format(name, obj._parent, lang.report.INVALID_OBJECT_PARENT))
+        return false
+    end
+    if output_skin then
+        return obj._skin_version ~= nil
+    end
+    if #(obj._object_data or {}) > 0 or #extra_modifications(obj) > 0 then
+        return true
+    end
+    if obj._skin_only then
+        local metas = object_metadata(obj)
+        for key, meta in pairs(metas) do
+            if obj[key] then
+                local found = false
+                each_value(obj[key], meta, function(level)
+                    found = found or should_write(obj, meta.id, level)
+                end)
+                if found then
+                    return true
+                end
+            end
+        end
         return false
     end
     if not obj._slk and obj._id ~= obj._parent then
@@ -219,8 +297,7 @@ local function sort_chunk(chunk, remove_unuse_object)
     local user = {}
     for name, obj in pairs(chunk) do
         if is_enable_obj(name, obj, remove_unuse_object) then
-            local parent = obj._slk_id or obj._parent
-            if (name == parent or obj._slk) and not obj._slk_id then
+            if is_original(name, obj) then
                 origin[#origin+1] = name
             else
                 user[#user+1] = name
@@ -237,7 +314,7 @@ local function sort_chunk(chunk, remove_unuse_object)
     return origin, user
 end
 
-return function (w2l_, type, data, wts_)
+return function (w2l_, type, data, wts_, skin)
     w2l = w2l_
     if not data then
         return
@@ -250,11 +327,26 @@ return function (w2l_, type, data, wts_)
     has_level = w2l.info.key.max_level[type]
     metadata = w2l:metadata()
     default = w2l:get_default()[type]
+    output_skin = not not skin
+    skin_lookup = {}
     
     local origin_id, user_id = sort_chunk(data, w2l.setting.remove_unuse_object)
     local max = #origin_id + #user_id
     if max == 0 then
         return
+    end
+    object_version = 2
+    for _, names in ipairs {origin_id, user_id} do
+        for _, name in ipairs(names) do
+            local obj = data[name]
+            local version = output_skin and obj._skin_version or obj._object_version
+            if version and version ~= 1 and version ~= 2 and version ~= 3 then
+                error(('Unsupported %s object data version %s.'):format(type, tostring(version)))
+            end
+            if version == 3 then
+                object_version = 3
+            end
+        end
     end
     hexs = {}
     write_head()

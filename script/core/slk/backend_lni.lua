@@ -90,6 +90,29 @@ local function write_data(meta, data, lines)
     lines[#lines+1] = {'%s = {%s}', key, table_concat(values, ', ')}
 end
 
+-- Reserved fields carry format information that has no editable SLK field.
+-- Arrays also preserve unrecognized modifications without a stale WTS index.
+local object_format_fields = {
+    '_object_version', '_object_data', '_object_extras',
+    '_skin_version', '_skin_data', '_skin_parent', '_skin_original',
+    '_skin_only', '_skin_fields', '_skin_extras',
+}
+
+local function format_internal(value)
+    if type(value) == 'table' then
+        local values = {}
+        for i, item in ipairs(value) do
+            values[i] = format_internal(item)
+        end
+        return '{' .. table_concat(values, ', ') .. '}'
+    elseif type(value) == 'string' then
+        return ('%q'):format(value):gsub('\n', 'n')
+    elseif type(value) == 'number' or type(value) == 'boolean' then
+        return tostring(value)
+    end
+    error('Invalid preserved object format data.')
+end
+
 local function write_obj(id, obj)
     local metas = {}
     local datas = {}
@@ -122,7 +145,8 @@ local function write_obj(id, obj)
     for _, meta in ipairs(metas) do
         write_data(meta, datas[meta], lines)
     end
-    if #lines == 0 and id == obj._parent then
+    local has_format_data = obj._object_version == 3 or obj._skin_version or obj._object_extras or obj._skin_extras
+    if #lines == 0 and id == obj._parent and not has_format_data then
         return
     end
     if id:match '[^%w%_]' then
@@ -132,6 +156,15 @@ local function write_obj(id, obj)
     end
     if obj._parent then
         write('%s = %q', '_parent', obj._parent)
+    end
+    for _, key in ipairs(object_format_fields) do
+        local value = obj[key]
+        if value ~= nil and not (key == '_object_version' and value == 2) then
+            write('%s = %s', key, format_internal(value))
+        end
+    end
+    if obj._skin_version or #(obj._object_data or {}) > 0 or obj._object_extras or obj._skin_extras then
+        write('_keep_obj = true')
     end
     for i = 1, #lines do
         write(table.unpack(lines[i]))

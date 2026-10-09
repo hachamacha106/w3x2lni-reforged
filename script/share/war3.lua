@@ -98,20 +98,26 @@ end
 local m = {}
 
 function m:open(path)
+    self:close()
     local verStr, ver = war3_ver(path)
     if not verStr then
         return false
     end
     if ver.major > 1 or ver.minor >= 29 then
         self.casc = casclib.open(path:string())
-        local lg = casc_language(self.casc)
-        if lg then
-            self.casc_paths = {
-                'war3.w3mod:_locales\\'..lg..'.w3mod:',
-                'war3.w3mod:',
-            }
-            self.name = lg .. '-' .. verStr
+        if not self.casc then
+            return false
         end
+        local lg = casc_language(self.casc)
+        if not lg then
+            self:close()
+            return false
+        end
+        self.casc_paths = {
+            'war3.w3mod:_locales\\'..lg..'.w3mod:',
+            'war3.w3mod:',
+        }
+        self.name = lg .. '-' .. verStr
     else
         self.mpqs = {}
         for _, mpqname in ipairs {
@@ -136,10 +142,14 @@ function m:open(path)
 end
 
 function m:close()
-    for _, mpq in ipairs(self.mpqs) do
+    for _, mpq in ipairs(self.mpqs or {}) do
         mpq:close()
     end
-    self.mpqs = {}
+    if self.casc then
+        self.casc:close()
+    end
+    self.mpqs, self.casc, self.casc_paths = nil, nil, nil
+    self.name, self.ver, self.reforge = nil, nil, nil
 end
 
 function m:readfile(filename)
