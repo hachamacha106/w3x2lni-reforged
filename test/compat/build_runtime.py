@@ -54,6 +54,8 @@ jobs = [
     cxx("bee/subprocess", [
         "3rd/bee.lua/binding/lua_subprocess.cpp",
         "3rd/bee.lua/bee/subprocess/subprocess_posix.cpp",
+        "3rd/bee.lua/bee/utility/file_handle.cpp",
+        "3rd/bee.lua/bee/utility/file_handle_posix.cpp",
         "3rd/bee.lua/bee/net/socket.cpp",
         "3rd/bee.lua/bee/net/endpoint.cpp",
         "3rd/bee.lua/bee/error.cpp",
@@ -81,4 +83,11 @@ if any(name == "bee/thread" for name, _ in jobs):
         sys.exit(code)
 with ThreadPoolExecutor(max_workers=4) as pool:
     results = list(pool.map(run, jobs))
-sys.exit(1 if any(results) else 0)
+if any(results):
+    sys.exit(1)
+# Shared-library compilation can succeed with unresolved C++ symbols. Exercise
+# the real process adapter in a fresh Lua process before producing a candidate.
+if len(sys.argv) == 2:
+    sys.exit(run(("process runtime smoke", [str(OUT / "lua"),
+                                         str(ROOT / "test/compat/runtime_subprocess.lua"), str(OUT)])))
+sys.exit(0)
