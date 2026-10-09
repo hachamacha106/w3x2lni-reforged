@@ -103,7 +103,7 @@ class StormLib:
             raise ValueError("Linux ctypes layout differs from compiled StormLib headers")
         self.lib = C.CDLL(str(library))
         signatures = {
-            "GetLastError": (DWORD, []),
+            "SErrGetLastError": (DWORD, []),
             "SFileSetLocale": (DWORD, [DWORD]),
             "SFileOpenArchive": (C.c_bool, [C.c_char_p, DWORD, DWORD, C.POINTER(HANDLE)]),
             "SFileCreateArchive": (C.c_bool, [C.c_char_p, DWORD, DWORD, C.POINTER(HANDLE)]),
@@ -126,7 +126,7 @@ class StormLib:
 
     def check(self, ok, operation):
         if not ok:
-            raise OSError(int(self.lib.GetLastError()), operation)
+            raise OSError(int(self.lib.SErrGetLastError()), operation)
 
     def open(self, path: str | Path) -> "Archive":
         handle = HANDLE()
@@ -171,7 +171,7 @@ class Archive:
         data = FindData()
         handle = self.storm.lib.SFileFindFirstFile(self.handle, b"*", C.byref(data), None)
         if not handle:
-            code = self.storm.lib.GetLastError()
+            code = self.storm.lib.SErrGetLastError()
             if code in (2, 1001):
                 return []
             raise OSError(code, "SFileFindFirstFile")
@@ -181,7 +181,7 @@ class Archive:
                 found.append(Member(data.filename.decode("utf-8", "surrogateescape"), data.size,
                                     data.compressed_size, data.flags, data.locale, data.block_index))
                 if not self.storm.lib.SFileFindNextFile(handle, C.byref(data)):
-                    code = self.storm.lib.GetLastError()
+                    code = self.storm.lib.SErrGetLastError()
                     if code != 1001:
                         raise OSError(code, "SFileFindNextFile")
                     break

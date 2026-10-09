@@ -72,6 +72,25 @@ class NativeRuntimeTests(unittest.TestCase):
     def test_retained_runtime_abi_accepted(self):
         native.validate_probe(probe_fixture(), "windows-x86")
 
+    def test_sector_rejection_uses_each_platform_error_code(self):
+        windows = probe_fixture()
+        native.validate_probe(windows, "windows-x86")
+        linux = probe_fixture()
+        linux.update(pointer_size=8)
+        linux["sizes"] = {"SFILE_CREATE_MPQ": 56, "SFILE_FIND_DATA": 1064}
+        linux["offsets"]["create"] = dict(zip(native.CREATE_OFFSETS_X86,
+                                              (0, 4, 8, 16, 20, 24, 28, 32, 36, 40, 44, 48)))
+        linux["offsets"]["find"] = dict(zip(native.FIND_OFFSETS_X86,
+                                            (0, 1024, 1032, 1036, 1040, 1044, 1048, 1052, 1056, 1060)))
+        linux["smoke"]["sector_rejections"][0]["error"] = 1000
+        native.validate_probe(linux, "linux-x64")
+        for target, probe, incorrect in (("linux-x64", linux, 11),
+                                         ("windows-x86", windows, 1000)):
+            with self.subTest(target=target):
+                probe["smoke"]["sector_rejections"][0]["error"] = incorrect
+                with self.assertRaisesRegex(ValueError, "sector capability/rejection"):
+                    native.validate_probe(probe, target)
+
     def test_wrong_version_width_layout_or_api_rejected(self):
         original = probe_fixture()
         mutations = [

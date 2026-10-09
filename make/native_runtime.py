@@ -75,11 +75,12 @@ def validate_probe(probe, target):
     if not REQUIRED_EXPORTS.issubset(set(probe.get("exports", []))):
         raise ValueError("Missing native archive APIs")
     smoke = probe.get("smoke", {})
+    bad_format = {"windows-x86": 11, "linux-x64": 1000}.get(target)
     if (smoke.get("attempted_sector_sizes") != [512, 4096, 65536]
             or smoke.get("sector_sizes") != [4096, 65536]
             or smoke.get("unsupported_sector_sizes") != [512]
             or smoke.get("sector_rejections") != [
-                {"sector_size": 512, "error": 11,
+                {"sector_size": 512, "error": bad_format,
                  "reason": "StormLib 9.40 rejects zero sector shift"}]):
         raise ValueError("Native sector capability/rejection checks incomplete")
     if not all(

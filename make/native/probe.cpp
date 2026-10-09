@@ -64,10 +64,11 @@ static bool smoke_archive(const std::string& dir, DWORD sector) {
     require(SFileCloseArchive(archive), "SFileCloseArchive(write)");
 #ifdef _WIN32
     bool reopened = SFileOpenArchive(wide.c_str(), 0, MPQ_OPEN_READ_ONLY, &archive);
+    DWORD reopen_error = reopened ? ERROR_SUCCESS : GetLastError();
 #else
     bool reopened = SFileOpenArchive(path.c_str(), 0, MPQ_OPEN_READ_ONLY, &archive);
+    DWORD reopen_error = reopened ? ERROR_SUCCESS : SErrGetLastError();
 #endif
-    DWORD reopen_error = reopened ? ERROR_SUCCESS : GetLastError();
     if (sector == 512) {
         // Pinned 9.40 rejects header.wSectorSize == 0 despite allowing creation.
         require(!reopened && reopen_error == ERROR_BAD_FORMAT, "Unexpected 512-byte sector behavior");
@@ -192,8 +193,8 @@ static int run_probe(const std::string& directory) {
 #undef EXPORT_JSON
         std::cout << "],\"smoke\":{\"attempted_sector_sizes\":[512,4096,65536],"
             "\"sector_sizes\":[4096,65536],\"unsupported_sector_sizes\":[512],"
-            "\"sector_rejections\":[{\"sector_size\":512,\"error\":11,"
-            "\"reason\":\"StormLib 9.40 rejects zero sector shift\"}],"
+            "\"sector_rejections\":[{\"sector_size\":512,\"error\":" << ERROR_BAD_FORMAT <<
+            ",\"reason\":\"StormLib 9.40 rejects zero sector shift\"}],"
             "\"payloads_equal\":true,\"empty_file\":true,\"unicode_member\":true,\"zlib_roundtrip\":true}}\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
