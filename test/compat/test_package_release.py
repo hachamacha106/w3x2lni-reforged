@@ -84,9 +84,20 @@ class ReleasePackagingTests(unittest.TestCase):
         self.run_git('add', '.')
         (self.repo / 'script/main.lua').write_text("return 'working'\n")
         (self.repo / 'untracked.txt').write_text('new file\n')
+        (self.repo / 'build').mkdir()
+        (self.repo / 'build/native.log').write_text('ignored build output\n')
         before = (self.repo / '.git/index').read_bytes()
-        with self.assertRaisesRegex(ValueError, 'clean and committed'):
+        status_before = packager.clean_status(self.repo)
+        with self.assertRaisesRegex(ValueError, 'clean and committed') as rejection:
             packager.source_snapshot(self.repo)
+        message = str(rejection.exception)
+        self.assertIn('Git status entries (paths only):', message)
+        self.assertIn('script/main.lua', message)
+        self.assertIn('untracked.txt', message)
+        self.assertNotIn('ignored build output', message)
+        self.assertNotIn('build/native.log', message)
+        self.assertEqual(packager.clean_status(self.repo), status_before)
+        self.assertEqual((self.repo / '.git/index').read_bytes(), before)
         source, files, patch, status = packager.source_snapshot(self.repo, allow_dirty=True)
         self.assertTrue(source['dirty'])
         self.assertNotEqual(source['tree'], source['committed_tree'])
@@ -117,6 +128,35 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertFalse(source['dirty'])
         self.assertEqual(files['LICENSE.txt'], committed)
 
+    def test_pinned_crlf_notice_survives_fresh_checkout_without_dirty_source(self):
+        # Use the production attributes so a wildcard cannot reintroduce this bug.
+        (self.repo / '.gitattributes').write_bytes((ROOT / '.gitattributes').read_bytes())
+        name = 'docs/licenses/stormlib-MIT.txt'
+        notice = self.repo / name
+        notice.parent.mkdir(parents=True)
+        content = b'Pinned upstream license\r\nCopyright retained\r\n'
+        notice.write_bytes(content)
+        self.run_git('add', '.')
+        self.run_git('commit', '-qm', 'Byte-preserved pinned license')
+        self.assertEqual(self.run_git('cat-file', 'blob', 'HEAD:' + name), content)
+        # Force a real checkout through Git's attributes on a missing file.
+        notice.unlink()
+        self.run_git('checkout-index', '--force', '--', name)
+        self.assertEqual(notice.read_bytes(), content)
+        self.assertFalse(packager.clean_status(self.repo))
+        source, files, patch, status = packager.source_snapshot(self.repo)
+        self.assertFalse(status)
+        self.assertFalse(source['dirty'])
+        self.assertEqual(files[name], content)
+        selected = packager.portable_source_files(files)
+        selected['SOURCE_FILES.sha256'] = packager.checksum_manifest(selected)
+        self.assertEqual(verifier.verify_release_source(selected, self.repo, {'source': source}),
+                         len(selected) - 1)
+        # Preserving bytes must not conceal genuine edits to the notice.
+        notice.write_bytes(content + b'changed attribution\r\n')
+        with self.assertRaisesRegex(ValueError, 'clean and committed'):
+            packager.source_snapshot(self.repo)
+
     def test_archive_reproducible_and_changed_payload_rejected(self):
         root = 'w3x2lni-reforged-1.0.0'
         files = {'release.json': json.dumps({'archive_root': root}).encode(),
@@ -136,6 +176,62 @@ class ReleasePackagingTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'ZIP checksum mismatches'):
             verifier.inspect_archive(broken)
 
+    def test_portable_zip_excludes_build_inputs_but_preserves_source_and_runtime(self):
+        (self.repo / 'make').mkdir()
+        build_inputs = {'make/rcedit.exe': b'icon resource build tool',
+                        'make/yue.dll': b'historical source-build GUI library'}
+        for name, content in build_inputs.items():
+            (self.repo / name).write_bytes(content)
+        (self.repo / 'make/install.lua').write_bytes(b"return 'source build instructions'\n")
+        (self.repo / 'script/share').mkdir()
+        (self.repo / 'script/share/gitlog.lua').write_bytes(b"return 'stale generated log'\n")
+        self.run_git('add', '.')
+        self.run_git('commit', '-qm', 'Historical source-build inputs')
+        source, entire_source, patch, status = packager.source_snapshot(self.repo)
+        self.assertFalse(status)
+        for name, content in build_inputs.items():
+            self.assertEqual(entire_source[name], content)
+            self.assertIn(name.encode(), patch)
+        selected = packager.portable_source_files(entire_source)
+        self.assertEqual(set(selected), {'script/main.lua', 'make/install.lua'})
+        upstream = {'bin/old%d.dll' % i: ('retained%d' % i).encode() for i in range(20)}
+        upstream.update({'bin/yue.dll': b'verified portable GUI library',
+                         'bin/stormlib.dll': b'verified portable archive library'})
+        files = dict(upstream, **selected)
+        files['SOURCE_FILES.sha256'] = packager.checksum_manifest(selected)
+        native = packager.apply_origins(files, upstream, source)
+        archive, _ = packager.write_verified_zip(self.repo / 'build/portable.zip',
+                                                 verifier.ROOT_NAME, files, 1791530000)
+        observed = verifier.inspect_archive(archive)
+        info = {'source': source, 'native_runtime': native}
+        self.assertEqual(verifier.verify_release_source(observed, self.repo, info), len(selected))
+        self.assertEqual(verifier.verify_origins(observed, info, upstream), 22)
+        self.assertEqual(observed['bin/yue.dll'], upstream['bin/yue.dll'])
+        for name in build_inputs:
+            self.assertNotIn(name, observed)
+            with self.subTest(unexpected_source=name):
+                invalid = dict(observed, **{name: build_inputs[name]})
+                invalid['SOURCE_FILES.sha256'] = packager.checksum_manifest(
+                    dict(selected, **{name: build_inputs[name]}))
+                with self.assertRaisesRegex(AssertionError, 'committed source set'):
+                    verifier.verify_release_source(invalid, self.repo, info)
+        incomplete = dict(observed)
+        incomplete['SOURCE_FILES.sha256'] = packager.checksum_manifest({'script/main.lua': selected['script/main.lua']})
+        with self.assertRaisesRegex(AssertionError, 'committed source set'):
+            verifier.verify_release_source(incomplete, self.repo, info)
+        changed = dict(observed, **{'bin/yue.dll': build_inputs['make/yue.dll']})
+        with self.assertRaisesRegex(ValueError, 'Retained native binary changed'):
+            packager.apply_origins(changed, upstream, source)
+
+    def test_unknown_source_native_files_still_fail_inventory_verification(self):
+        upstream = {'bin/old%d.dll' % i: ('retained%d' % i).encode() for i in range(22)}
+        for name in ('make/unapproved.dll', 'make/unapproved.exe'):
+            with self.subTest(unapproved=name):
+                selected = packager.portable_source_files({name: b'unknown native file'})
+                self.assertIn(name, selected)
+                with self.assertRaisesRegex(ValueError, 'Unexpected or missing portable native file'):
+                    packager.apply_origins(dict(upstream, **selected), upstream, {})
+
     def test_validation_requires_distinct_suites_and_same_source(self):
         source = {'commit': 'a' * 40, 'tree': 'b' * 40, 'dirty': False}
         result = {'source_commit': source['commit'], 'source_tree': source['tree'],
@@ -151,7 +247,7 @@ class ReleasePackagingTests(unittest.TestCase):
             packager.validate_test_report(result, 'matching', source)
         result['source_tree'] = source['tree']
         result['suites'][0] = result['suites'][1]
-        with self.assertRaisesRegex(ValueError, '14 distinct'):
+        with self.assertRaisesRegex(ValueError, 'distinct extracted-package'):
             packager.validate_test_report(result, 'matching', source)
 
 

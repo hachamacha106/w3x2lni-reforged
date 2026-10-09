@@ -1,14 +1,16 @@
 local fs = require 'bee.filesystem'
 local gui = require 'yue.gui'
+local backend = require 'gui.backend'
 local lang = require 'share.lang'
 local ui = require 'gui.new.template'
 local ev = require 'gui.event'
 local set_readonly = require 'ffi.textedit_readonly'
+local theme = require 'gui.new.theme'
 local root = fs.current_path()
 local view, data, element
 
 local template = ui.container {
-    style = { FlexGrow = 1, FlexBasis = 0, MinHeight = 0, Padding = 6 },
+    style = { FlexGrow = 1, FlexBasis = 0, MinHeight = 0, Padding = 16 },
     font = { size = 13 },
     ui.textedit {
         id = 'report_text',
@@ -31,13 +33,13 @@ local template = ui.container {
     },
     ui.label {
         text = lang.ui.COPY_HINT,
-        text_color = '#AAA',
+        text_color = theme.muted,
         align = 'start',
         font = { size = 12 },
         style = { Height = 20, FlexShrink = 0, MarginTop = 4 },
     },
     ui.container {
-        style = { Height = 32, FlexShrink = 0, FlexDirection = 'row', MarginTop = 4 },
+        style = { Height = 40, FlexShrink = 0, FlexDirection = 'row', MarginTop = 4 },
         ui.button {
             id = 'copy_report',
             title = lang.ui.COPY_ALL,
@@ -81,7 +83,8 @@ ev.on('update theme', function()
 end)
 
 function view:on_show()
-    local text = io.load(root:parent_path() / 'log' / 'report.log') or ''
+    local text = backend.report_text
+    if text == nil then text = io.load(root:parent_path() / 'log' / 'report.log') or '' end
     data.report.text = text
     data.theme = window._color
     element.report_text:selectrange(0, 0)

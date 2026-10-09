@@ -2,25 +2,26 @@ local lang = require 'share.lang'
 local ui = require 'gui.new.template'
 local ev = require 'gui.event'
 local brand = require 'share.brand'
+local theme = require 'gui.new.theme'
 
 local template = ui.container {
-    style = { FlexGrow = 1 },
-    font = { size = 16 },
+    style = { FlexGrow = 1, Padding = 16 },
+    font = { name = 'Segoe UI', size = 14 },
     ui.container {
         style = { FlexGrow = 1 },
         ui.label {
             text = brand.name .. ' ' .. (require 'share.changelog')[1].version,
-            text_color = '#CCC',
+            text_color = theme.text,
             style = { MarginTop = 12, Height = 28 },
         },
         ui.label {
-            text = lang.ui.MAINTAINER .. ' ' .. brand.maintainer,
-            text_color = '#AAA',
+            text = lang.ui.MAINTAINER:gsub('%s+$', '') .. ' ' .. brand.maintainer,
+            text_color = theme.muted,
             style = { Height = 28 },
         },
         ui.label {
             text = lang.ui.AUTHOR,
-            text_color = '#000',
+            text_color = theme.text,
             style = { MarginTop = 20, Height = 28, Width = 240 },
             bind = {
                 color = 'theme'
@@ -28,17 +29,35 @@ local template = ui.container {
         },
         ui.label {
             text = lang.ui.FRONTEND .. 'actboy168',
-            text_color = '#AAA',
+            text_color = theme.muted,
             style = { MarginTop = 5, Height = 28, Width = 240 }
         },
         ui.label {
             text = lang.ui.BACKEND .. lang.ui.SUMNEKO,
-            text_color = '#AAA',
+            text_color = theme.muted,
             style = { Height = 28, Width = 240 }
         },
         ui.label {
+            text = 'Research inspiration: devoltzz / Devo Map Doctor',
+            text_color = theme.muted,
+            style = { Height = 28 },
+        },
+        ui.label {
+            text = 'JASS verification: pjass (Rudi Cilibrasi, lep and contributors)',
+            text_color = theme.muted,
+            style = { Height = 28 },
+        },
+        ui.label {
+            text = 'Archive: StormLib / Ladislav Zezula',
+            text_color = theme.muted, style = { Height = 28 },
+        },
+        ui.label {
+            text = 'Compression: zlib / Jean-loup Gailly and Mark Adler',
+            text_color = theme.muted, style = { Height = 28 },
+        },
+        ui.label {
             text = lang.ui.CHANGE_LOG,
-            text_color = '#000',
+            text_color = theme.text,
             style = { Height = 28, Width = 240 },
             bind = {
                 color = 'theme'
@@ -47,7 +66,7 @@ local template = ui.container {
         ui.scroll {
             style = { FlexGrow = 1 },
             hpolicy = 'never',
-            vpolicy = 'never',
+            vpolicy = 'automatic',
             width = 0,
             bind = {
                 height = 'height'
@@ -59,7 +78,7 @@ local template = ui.container {
     },
     ui.button {
         title = lang.ui.BACK,
-        style = { Bottom = 0, Height = 28, Margin = 5 },
+        style = { Height = 40, MarginTop = 12, FlexShrink = 0 },
         bind = {
             color = 'theme'
         },
@@ -73,8 +92,8 @@ local template = ui.container {
 
 local template_version = ui.label {
     style = { Margin = 3, Height = 25 },
-    color = '#444',
-    text_color = '#AAA',
+    color = theme.raised,
+    text_color = theme.muted,
     font = { size = 16 },
     bind = {
         text = 'version'
@@ -83,8 +102,8 @@ local template_version = ui.label {
 
 local template_changelog = ui.container {
     style = { Height = 31, FlexDirection = 'row' },
-    color = '#222',
-    color_hover = '#444',
+    color = theme.background,
+    color_hover = theme.raised,
     ui.label {
         style = { Margin = 3, Width = 40 },
         font = { name = 'Consolas', size = 18 },
@@ -94,8 +113,8 @@ local template_changelog = ui.container {
         }
     },
     ui.label {
-        style = { Margin = 3, Width = 360, FlexGlow = 1 },
-        text_color = '#AAA',
+        style = { Margin = 3, FlexGrow = 1, FlexBasis = 0 },
+        text_color = theme.muted,
         font = { size = 16 },
         align = 'start',
         bind = {
@@ -105,10 +124,10 @@ local template_changelog = ui.container {
 }
 
 local color  = {
-    NEW = '#00AD3C',
-    CHG = '#D9A33C',
-    FIX = '#C81E1E',
-    UI =  '#6F4D96',
+    NEW = theme.modes.slk,
+    CHG = theme.modes.obj,
+    FIX = theme.error,
+    UI = '#584780',
 }
 
 local view, data, element = ui.create(template, {

@@ -5,12 +5,13 @@ local ev = require 'gui.event'
 local ui = require 'gui.new.template'
 local fs = require 'bee.filesystem'
 local brand = require 'share.brand'
+local theme = require 'gui.new.theme'
 
 window = {}
 
 ext.on_timer = timer.update
 function ext.on_dropfile(filename)
-    if window._worker and not window._worker.exited then
+    if window._closing or window._worker and not window._worker.exited then
         return
     end
     local check_lni_mark = require 'share.check_lni_mark'
@@ -20,9 +21,9 @@ function ext.on_dropfile(filename)
     if war3:open(path) then
         window._filename = path
         window._mode = 'mpq'
-        window:set_theme('War3Dump', '#9CD')
+        window:set_theme('War3Dump', theme.modes.mpq)
         window:show_page('convert')
-        window:set_theme('War3Dump', '#9CD')
+        window:set_theme('War3Dump', theme.modes.mpq)
         return
     end
     if path:filename():string() == '.w3x' then
@@ -41,19 +42,20 @@ end
 
 local function create_mainview(win)
     local template = ui.container {
-        color = '#222',
-        style = { Padding = 1 },
+        color = theme.background,
+        font = { name = 'Segoe UI', size = 14 },
+        style = { Padding = 0 },
         ui.container {
             id = 'caption',
-            style = { Height = 40, FlexShrink = 0, FlexDirection = 'row' },
+            style = { Height = 56, FlexShrink = 0, FlexDirection = 'row', Padding = 12 },
             bind = {
                 color = 'theme'
             },
             ui.label {
                 id = 'title',
-                style = { FlexGrow = 1, MarginLeft = 6 },
+                style = { FlexGrow = 1 },
                 align = 'start',
-                font = { name = 'Constantia', size = 24, weight = 'bold' },
+                font = { name = 'Segoe UI', size = 20, weight = 'bold' },
                 bind = {
                     text = 'title'
                 }
@@ -63,7 +65,7 @@ local function create_mainview(win)
     
     local view, data = ui.create(template, {
         title = brand.name,
-        theme = '#00ADD9',
+        theme = theme.modes.lni,
     })
     
     ev.on('update theme', function(color, title)
@@ -80,6 +82,10 @@ function window:create(t)
     -- Use the native frame for resize borders, maximize/restore and the system menu.
     local win = gui.Window.create { frame = true }
     function win.onclose()
+        window._closing = true
+        if window._worker and not window._worker.exited and window._worker.cancel_file then
+            pcall(window._worker.cancel, window._worker)
+        end
         gui.MessageLoop.quit()
     end
     -- The unchanged native extension locates the window by this initial title.
@@ -90,7 +96,7 @@ function window:create(t)
     win:setresizable(true)
     win:setmaximizable(true)
     win:setminimizable(true)
-    win:setcontentsizeconstraints({ width = 400, height = 600 }, {})
+    win:setcontentsizeconstraints({ width = 560, height = 600 }, {})
     win:setcontentview(create_mainview(win))
     win:setcontentsize { width = t.width, height = t.height }
     win:center()
@@ -117,11 +123,11 @@ function window:show_page(name)
 end
 
 local view = window:create {
-    width = 720,
-    height = 600,
+    width = 780,
+    height = 680,
 }
 
-window:set_theme('W3x2Lni', '#00ADD9')
+window:set_theme('W3x2Lni', theme.modes.lni)
 window:show_page('index')
 
 gui.MessageLoop.run()

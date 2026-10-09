@@ -8,5 +8,6 @@ return function (t, data)
     end
     local bind = {}
     ca.label_color(o, t, data, bind)
+    ca.visible(o, t, data, bind)
     return o
 end

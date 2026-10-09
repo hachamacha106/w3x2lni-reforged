@@ -39,9 +39,9 @@ Remove unreferenced objects
 [OPTIMIZE_JASS]
 Optimize JASS
 [OPTIMIZE_JASS_HINT]
-Reduce size and lifting performance
+Reduce JASS script size and improve execution performance.
 [MDX_SQUF]
-Compress mdx
+Compress MDX models
 [MDX_SQUF_HINT]
 Lossy compression
 [REMOVE_WE_ONLY]
@@ -67,7 +67,7 @@ Rename variables and functions
 [EXTRA_CHECK]
 Extra check
 [EXTRA_CHECK_HINT]
-check the rationality of data
+Check map data for consistency.
 [REPORT]
 Report
 [PROCESSING]
@@ -86,3 +86,24 @@ Copy all
 Ctrl+A: select all   Ctrl+C: copy selection
 [MAINTAINER]
 Maintainer:
+
+[CHOOSE_FORMAT]
+Choose conversion format
+
+[LNI_DESCRIPTION]
+Editable project folder for version control.
+
+[OBJ_DESCRIPTION]
+Pack a map with standard object data.
+
+[SLK_DESCRIPTION]
+Convert object data to SLK using the selected options.
+
+[CONVERSION_OPTIONS]
+Conversion options
+
+[CHANGE_FORMAT]
+Change format
+
+[DRAG_MAP_HINT]
+Drop a .w3x, .w3m, or LNI project folder here.

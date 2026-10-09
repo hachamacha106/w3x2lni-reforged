@@ -74,6 +74,52 @@ function mt:list_file()
     return self._list_file
 end
 
+-- Read-only inventory with physical paths for bounded diagnostics. Conversion
+-- keeps its existing list_file traversal and filename escaping behavior.
+function mt:foreach_file(callback, options)
+    assert(self.read, 'Directory diagnostics require a read-only archive')
+    options = options or {}
+    local root = fs.canonical(self.path)
+    local prefix = root:string():gsub('\\', '/'):gsub('/+$', '') .. '/'
+    local count = 0
+    local function skipped(name, reason)
+        if options.skipped then options.skipped(name, reason) end
+    end
+    local function scan(dir, depth)
+        if options.cancelled and options.cancelled() then error('Optimization cancelled') end
+        for path in fs.pairs(dir) do
+            if options.cancelled and options.cancelled() then error('Optimization cancelled') end
+            if not ignore[path:filename():string()] then
+                count = count + 1
+                local raw = path:string():gsub('\\', '/')
+                local name = loaded_name(raw:sub(#prefix + 1):gsub('/', '\\'))
+                if count > (options.max_entries or 65536) then
+                    skipped(name, ('Project inventory exceeds the %d-entry safety limit'):format(options.max_entries or 65536))
+                    return false
+                end
+                local kind = fs.symlink_status(path):type()
+                if kind ~= 'directory' and kind ~= 'regular' then
+                    skipped(name, 'Linked or nonregular project entry was not read: ' .. kind)
+                else
+                    local physical = fs.canonical(path)
+                    local key = physical:string():gsub('\\', '/')
+                    if raw:sub(1, #prefix) ~= prefix or key:sub(1, #prefix) ~= prefix then
+                        skipped(name, 'Project entry resolves outside the input folder')
+                    elseif kind == 'directory' then
+                        if depth >= (options.max_depth or 128) then
+                            skipped(name, 'Project directory nesting exceeds the safety limit')
+                        elseif not scan(path, depth + 1) then return false end
+                    else
+                        callback(name, physical)
+                    end
+                end
+            end
+        end
+        return true
+    end
+    return scan(root, 0)
+end
+
 function mt:number_of_files()
     return #self:list_file()
 end

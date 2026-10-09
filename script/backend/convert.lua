@@ -5,6 +5,7 @@ local lang = require 'share.lang'
 local get_report = require 'share.report'
 local check_lni_mark = require 'share.check_lni_mark'
 local unpack_setting = require 'backend.unpack_setting'
+local jass_verify = require 'backend.jass_verify'
 local w2l = core()
 local root = require 'backend.w2l_path'
 local fs = require 'bee.filesystem'
@@ -121,6 +122,9 @@ return function (mode)
         w2l:add_plugin(source, plugin)
     end)
 
+    -- Check input before plugins, optimization and WTS substitutions.
+    jass_verify.check(w2l, input_ar, 'Before conversion')
+
     messager.text(lang.script.CHECK_PLUGIN)
     w2l:call_plugin 'on_convert'
 
@@ -150,6 +154,22 @@ return function (mode)
     w2l.progress:start(1)
     builder.save(w2l, slk.w3i, slk.w3f, input_ar, output_ar)
     w2l.progress:finish()
+
+    -- Reopen the saved archive to check the exact final, WTS-expanded script.
+    local saved_ar
+    local checked, check_error = xpcall(function()
+        local reopen_error
+        saved_ar, reopen_error = builder.load(output)
+        assert(saved_ar, reopen_error)
+        local map = slk.w3i and slk.w3i[lang.w3i.MAP]
+        jass_verify.check(w2l, saved_ar, 'After conversion', {
+            script_type = map and map[lang.w3i.SCRIPT_TYPE],
+        })
+    end, debug.traceback)
+    if saved_ar then pcall(saved_ar.close, saved_ar) end
+    if not checked then
+        messager.report('JASS verification (pjass)', 8, 'After conversion: Unavailable', tostring(check_error))
+    end
     
     local clock = os.clock()
     messager.text(lang.script.FINISH:format(clock))

@@ -29,8 +29,8 @@ def main():
     assert os.environ.get("GITHUB_REF_NAME") == release["tag"], "Release tag differs from metadata"
     archive = args.asset_directory / release["asset_name"]
     checksum = Path(str(archive) + ".sha256")
-    _, digest = inspect_archive(archive, release, checksum)
-    validate_windows_report(args.windows_report, digest)
+    files, digest = inspect_archive(archive, release, checksum)
+    validate_windows_report(args.windows_report, digest, release["version"], files)
     notes = ROOT / "docs/releases" / (release["version"] + ".md")
     assert notes.is_file(), "Release notes are missing"
     title = release["product_name"] + " " + release["display_version"]

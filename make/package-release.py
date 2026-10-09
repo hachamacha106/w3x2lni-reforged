@@ -3,7 +3,8 @@
 
 A candidate is built first, tested after extraction by test/compat/verify_package.py,
 then rebuilt with --validation and that test run's --map-validation directory.
-No Windows binaries are rebuilt and no network access or publication is performed.
+Only a separately built and probed StormLib artifact may replace its pinned upstream DLL.
+The packager performs no network access, compilation, or publication.
 """
 from __future__ import annotations
 
@@ -19,6 +20,10 @@ import re
 import subprocess
 import tempfile
 import zipfile
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from runtime_origins import apply_origins, verify_origins
 
 UPSTREAM_BASE = '82916514a12b7edb15252d42225cd8cc8ce61cfd'
 NATIVE_SOURCE_COMMIT = '05e3e371e36f078031d54bcc9783b52b9b86485a'
@@ -30,10 +35,13 @@ SUITE_FILES = {
     'legacy_profile_fields.lua', 'scripts.lua', 'integration.lua',
     'archive_lifecycle.lua', 'import_cli.py', 'archive_header.lua',
     'crashreport.lua', 'w3i_names.lua', 'gui_report.lua', 'user_map.py',
+    'jass_verify.lua', 'lossless.lua',
 }
 SOURCE_PREFIXES = ('script/', 'test/', 'make/', 'docs/', 'data/warcraft-current/')
 SOURCE_ROOT_FILES = {'README.md', 'CHANGELOG.md', 'LICENSE.txt', 'config.ini', 'release.json'}
 GENERATED_GITLOG = 'script/share/gitlog.lua'
+# Historical source-build inputs; the portable runtime retains bin/yue.dll.
+BUILD_ONLY_SOURCE_BINARIES = {'make/rcedit.exe', 'make/yue.dll'}
 
 
 def require(condition, message):
@@ -43,6 +51,14 @@ def require(condition, message):
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def portable_source_files(entire_source):
+    # Keep the full Git snapshot/patch; omit only these known build inputs
+    # from the application ZIP. Unknown native files must still be rejected.
+    return {name: content for name, content in entire_source.items()
+            if (name.startswith(SOURCE_PREFIXES) or name in SOURCE_ROOT_FILES)
+            and name != GENERATED_GITLOG and name not in BUILD_ONLY_SOURCE_BINARIES}
 
 
 def runtime_fingerprint(files):
@@ -137,9 +153,24 @@ def source_snapshot(repo, allow_dirty=False):
     require(git(repo, 'merge-base', UPSTREAM_BASE, commit).decode().strip() == UPSTREAM_BASE,
             'Release HEAD does not descend from the pinned upstream base')
     status = clean_status(repo)
-    require(not status or allow_dirty,
+    if status and not allow_dirty:
+        # Name the runner-side mutation without discarding or admitting it.
+        entries = [json.dumps(entry.decode('utf-8', errors='backslashreplace'), ensure_ascii=False)
+                   for entry in status.split(b'\0') if entry]
+        details = '\nGit status entries (paths only):\n  ' + '\n  '.join(entries)
+        nested = subprocess.run(['git', 'submodule', 'foreach', '--recursive',
+                                 'git status --porcelain=v1 --untracked-files=all'],
+                                cwd=repo, capture_output=True)
+        if nested.returncode == 0 and nested.stdout:
+            # JSON quoting prevents control characters in filenames/log output.
+            lines = [json.dumps(line, ensure_ascii=False) for line in
+                     nested.stdout.decode('utf-8', errors='backslashreplace').splitlines()]
+            details += '\nRecursive submodule status:\n  ' + '\n  '.join(lines)
+        elif nested.returncode:
+            details += '\nRecursive submodule status could not be read.'
+        raise ValueError(
             'Release source must be clean and committed. Commit source changes and keep outputs in build/. '
-            'Use --allow-dirty only for a development candidate.')
+            'Use --allow-dirty only for a development candidate.' + details)
     tree = committed_tree
     if status:
         build = repo / 'build'
@@ -289,7 +320,7 @@ def validate_test_report(validation, fingerprint, source):
     require(len(suites) == len(SUITE_FILES)
             and {item['file'] for item in suites} == SUITE_FILES
             and all(item['exit_code'] == 0 for item in suites),
-            'All 14 distinct extracted-package compatibility suites must pass')
+            f'All {len(SUITE_FILES)} distinct extracted-package compatibility suites must pass')
 
 
 def json_bytes(value):
@@ -335,6 +366,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--map-validation', type=Path, required=True)
     parser.add_argument('--validation', type=Path)
+    parser.add_argument('--native-runtime', type=Path, help='Verified Windows native build artifact directory')
+    parser.add_argument('--pjass', type=Path, help='Checksum-pinned upstream pjass.exe')
     parser.add_argument('--expected-tag', help='Check the triggering tag against release.json and HEAD if present')
     parser.add_argument('--allow-dirty', action='store_true',
                         help='Prepare an explicitly uncommitted development candidate; not a validated release')
@@ -343,6 +376,9 @@ def main():
     require(not (args.allow_dirty and args.validation), '--allow-dirty cannot be used with --validation')
     source, entire_source, patch, status = source_snapshot(repo, args.allow_dirty)
     release = load_release(entire_source)
+    if tuple(map(int, release['version'].split('-')[0].split('.'))) >= (1, 1, 0) and not args.allow_dirty:
+        require(args.native_runtime is not None and args.pjass is not None,
+                'Version 1.1+ requires a verified native build and pinned pjass helper')
     if args.expected_tag:
         require(args.expected_tag == release['tag'], 'Triggering tag does not match release.json')
     tag_result = subprocess.run(['git', 'rev-parse', '--verify', 'refs/tags/' + release['tag'] + '^{commit}'],
@@ -355,10 +391,14 @@ def main():
     # Replace complete namespaces; no obsolete upstream script can survive.
     files = {name: content for name, content in upstream.items()
              if not name.startswith(SOURCE_PREFIXES) and name not in SOURCE_ROOT_FILES}
-    source_files = {name: content for name, content in entire_source.items()
-                    if (name.startswith(SOURCE_PREFIXES) or name in SOURCE_ROOT_FILES)
-                    and name != GENERATED_GITLOG}
+    source_files = portable_source_files(entire_source)
     require(SOURCE_ROOT_FILES <= set(source_files), 'Release is missing required top-level source files')
+    if args.pjass is not None:
+        required_notices = {'docs/licenses/pjass-BSD.txt', 'docs/licenses/pjass-AUTHORS.txt',
+                            'docs/licenses/map-doctor-MIT.txt', 'docs/licenses/stormlib-MIT.txt',
+                            'docs/licenses/zlib.txt', 'docs/licenses/bzip2.txt',
+                            'docs/licenses/stormlib-bundled-notices.txt'}
+        require(required_notices <= set(source_files), 'Missing adopted-tool license notices')
     files.update(source_files)
     files[GENERATED_GITLOG] = generated_gitlog(source)
     files['SOURCE_CHANGES.patch'] = patch
@@ -373,8 +413,7 @@ def main():
     validate_dataset(files)
     binaries = sorted(name for name in upstream if name.lower().endswith(('.exe', '.dll')))
     require(len(binaries) == 22, 'Expected 22 official native runtime files')
-    for name in binaries:
-        require(files[name] == upstream[name], 'Official native runtime file changed: ' + name)
+    origins = apply_origins(files, upstream, source, args.native_runtime, args.pjass)
     fingerprint = runtime_fingerprint(files)
     validation = json.loads(args.validation.read_bytes()) if args.validation else None
     if validation is not None:
@@ -383,7 +422,7 @@ def main():
     prepared_date = source['commit_date_utc'][:10]
     native = {'release': '2.7.3', 'release_source_commit': NATIVE_SOURCE_COMMIT,
               'release_zip_sha256': UPSTREAM_ZIP_SHA256, 'release_zip_url': UPSTREAM_ZIP_URL,
-              'files_verified_unchanged': binaries, 'rebuilt': False, 'executed_on_windows': False}
+              'executed_on_windows': False, **origins}
     info = {
         'name': release['archive_root'], 'product_name': release['product_name'],
         'version': release['version'], 'script_version': release['version'],
@@ -418,7 +457,7 @@ def main():
         'source_tree': source['tree'], 'source_dirty': source['dirty'],
         'tested_archive_sha256': validation['archive_sha256'] if verified else None,
         'tested_archive_integrity': validation['archive_integrity'] if verified else None,
-        'source_and_data_files_checked': len(source_files), 'native_executables_and_dlls_unchanged': 22,
+        'source_and_data_files_checked': len(source_files), 'native_executables_and_dlls_unchanged': len(origins['files_verified_unchanged']),
     })
     lines = [f"{release['product_name']} {release['display_version']} - verification",
              f"Source commit: {source['commit']}", f"Source tree: {source['tree']}",
@@ -431,15 +470,15 @@ def main():
              'Windows GUI/native execution, real CASC extraction, World Editor and in-game checks were not run here.',
              'One simple supplied current-editor map cannot establish coverage of every modern map feature.',
              'Raw dataset exact build and locale remain unverified.', '',
-             '14/14 extracted-package suites passed.' if verified else 'Candidate: extracted-package suite results pending.',
+             f'{len(SUITE_FILES)}/{len(SUITE_FILES)} extracted-package suites passed.' if verified else 'Candidate: extracted-package suite results pending.',
              'Six rebuilt MPQs passed reopening/member-byte checks; eight conversions had zero errors/warnings.',
-             'All 111 supplied raw data files and all 22 official native binaries retain their recorded bytes.', '']
+             f"All 111 raw data files and {len(origins['files_verified_unchanged'])} retained native files preserve their bytes.", '']
     for result in validation['suites'] if verified else []:
         lines.extend([result['name'], 'File: test/compat/' + result['file'],
                       f"Exit status: {result['exit_code']}; elapsed: {result['elapsed_seconds']} seconds",
                       result['stdout'].rstrip(), result['stderr'].rstrip(), ''])
     files['TEST_RESULTS.txt'] = ('\n'.join(lines) + '\n').encode()
-    status_line = ('14/14 Linux extracted-package compatibility suites passed.' if verified else
+    status_line = (f'{len(SUITE_FILES)}/{len(SUITE_FILES)} Linux extracted-package compatibility suites passed.' if verified else
                    'Development candidate: extracted-package compatibility tests are pending.')
     start = f"""{release['product_name']} {release['display_version']}
 
@@ -465,10 +504,10 @@ checks. This one simple test map does not exercise every modern map feature.
 Included:
   README.md                  Usage and project overview
   CHANGELOG.md               Release history
-  docs/releases/1.0.0.md      Release notes and scope
+  docs/releases/{release['version']}.md      Release notes and scope
   docs/en-us/credits.md       Upstream and dependency credits
   W3I_FIELDS.md              Descriptive W3I fields and binary layout
-  BUILD_INFO.json            Exact source and unchanged native provenance
+  BUILD_INFO.json            Exact source and per-file native provenance
   PACKAGE_VERIFICATION.json  Tested code/data/runtime fingerprint
   TEST_RESULTS.txt           Compatibility results and honest limitations
   CHECKSUMS.sha256           SHA-256 of every other packaged file
@@ -484,8 +523,11 @@ Included:
 Release source: https://github.com/{release['repository']}/tree/{source['commit']}
 The source patch applies to upstream {UPSTREAM_BASE} and was replay-checked
 against the recorded source tree. Git submodule pins are in BUILD_INFO.json.
-Official upstream 2.7.3 EXE/DLL files are included unchanged; they were not rebuilt.
-The executable file-version resources therefore retain their upstream version.
+{len(origins['files_verified_unchanged'])} retained upstream 2.7.3 EXE/DLL files are byte-identical.
+Rebuilt StormLib and added pjass, when present, have separate pinned provenance.
+See BUILD_INFO.json, NATIVE_BUILD.json and NATIVE_ABI.json for build evidence.
+Retained executable file-version resources keep their upstream version.
+Rebuilt and added components have explicit per-file provenance in BUILD_INFO.json.
 This is an independently maintained fork. GPLv3 terms are in LICENSE.txt.
 
 For editor checks use OBJ, LNI-OBJ or SLK-editor maps. Optimized SLK output removes
@@ -509,7 +551,7 @@ If reporting an error, include the action, relevant map, and log/error/*.log.
                       'sha256': sha256(args.output.read_bytes()), 'archive_members_verified': len(packed),
                       'source_commit': source['commit'], 'source_tree': source['tree'],
                       'source_files_verified': len(source_files), 'source_dirty': source['dirty'],
-                      'native_files_unchanged': 22, 'package_runtime_fingerprint': fingerprint,
+                      'native_files_unchanged': len(origins['files_verified_unchanged']), 'package_runtime_fingerprint': fingerprint,
                       'extracted_package_tests_passed': len(SUITE_FILES) if verified else 0}, indent=2))
 
 

@@ -4,17 +4,20 @@ local timer = require 'gui.timer'
 local messagebox = require 'ffi.messagebox'
 local lang = require 'share.lang'
 local config = require 'share.config'
-local push_error = require 'gui.push_error'
 local ui = require 'gui.new.template'
 local databinding = require 'gui.new.databinding'
 local ev = require 'gui.event'
 local fs = require 'bee.filesystem'
+local theme = require 'gui.new.theme'
 
 local root = fs.current_path()
 local worker
+local recovering = false
+local recovery_error
 local view
 local data
 local element
+local configData
 
 local function getexe()
     local i = 0
@@ -25,31 +28,34 @@ local function getexe()
 end
 
 local function update_show()
+    local busy = window._closing or worker and not worker.exited
+    data.actions.enabled = not busy
+    data.actions.start_text = busy and lang.ui.PROCESSING or lang.ui.START
+    if configData then configData.proxy.enabled = not busy end
     data.report.visible = not not backend.lastword
     data.progress.visible = (not not worker) and not data.report.visible
 end
 
-local function update()
-    worker:update()
+local function update_result()
     data.message = backend.message
     if backend.lastword then
         data.report.text = backend.lastword.content
         if backend.lastword.type == 'failed' or backend.lastword.type == 'error' then
-            data.report.color = '#C33'
+            data.report.color = theme.error
         elseif backend.lastword.type == 'warning' then
-            data.report.color = '#FC3'
+            data.report.color = theme.warning
         else
             data.report.color = window._color
         end
     end
-    data.progress.value = backend.progress / 100
+    data.progress.value = (backend.progress or 0) / 100
     update_show()
+end
+
+local function update()
+    worker:update()
+    update_result()
     if worker.exited then
-        if #worker.error > 0 then
-            push_error(worker.error)
-            worker.error = ''
-            return 0, 1
-        end
         if worker.exit_code == 0 then
             return 1000, 0
         else
@@ -58,41 +64,67 @@ local function update()
     end
 end
 
+local function start_recovery()
+    local ok, err = xpcall(function() worker:recover(recovery_error) end, debug.traceback)
+    if ok then recovery_error = nil
+    else backend:failure(recovery_error .. '\n' .. err) end
+    return ok
+end
+
 local function delayedtask(t)
-    local ok, r, code = xpcall(update, debug.traceback)
-    if not ok then
-        t:remove()
-        messagebox(lang.ui.ERROR, '%s', r)
+    if recovering then
+        if recovery_error and not start_recovery() then update_result(); return end
+        local ok, finished = xpcall(function() return worker:drain_failure() end, debug.traceback)
+        if not ok then backend:failure(finished)
+        elseif finished then recovering = false; t:remove() end
+        update_result()
         return
     end
-    if r then
-        t:remove()
+    local ok, r, code = xpcall(update, debug.traceback)
+    if not ok then
+        recovering = true
+        recovery_error = r
+        start_recovery()
+        update_result()
+        return
     end
+    if r then t:remove() end
 end
 
 local template = ui.container {
-    style = { FlexGrow = 1, Padding = 4 },
-    font = { size = 18 },
+    style = { FlexGrow = 1, Padding = 16 },
+    font = { name = 'Segoe UI', size = 14 },
     -- upper
     ui.container {
         id = 'config',
         style = { FlexGrow = 1, JustifyContent = 'flex-start' },
-        -- filename
-        ui.button {
-            style = { Height = 36, MarginTop = 4, MarginBottom = 16 },
-            bind = {
-                title = 'filename',
-                color = 'theme'
+        ui.container {
+            color = theme.surface,
+            style = { Height = 48, Padding = 10, MarginBottom = 16, FlexShrink = 0 },
+            ui.label {
+                id = 'filename',
+                align = 'start',
+                style = { FlexGrow = 1 },
+                bind = { text = 'filename' },
             },
-        }
+        },
+        ui.label {
+            id = 'options_heading',
+            text = lang.ui.CONVERSION_OPTIONS,
+            align = 'start',
+            style = { Height = 32, MarginBottom = 8 },
+            font = { name = 'Segoe UI', size = 17, weight = 'bold' },
+        },
     },
     -- lower
     ui.container {
-        style = { FlexGrow = 1, JustifyContent = 'flex-end' },
+        style = { FlexShrink = 0, JustifyContent = 'flex-end' },
         -- message
         ui.label {
-            style = { Height = 20, MarginBottom = 8 },
-            text_color = '#CCC',
+            id = 'status_message',
+            style = { Height = 44, MarginBottom = 8 },
+            text_color = theme.muted,
+            font = { name = 'Segoe UI', size = 13 },
             align = 'start',
             bind = {
                 text = 'message',
@@ -100,7 +132,7 @@ local template = ui.container {
         },
         -- progress
         ui.progress {
-            style = { Height = 30, MarginBottom = 8, FlexDirection = 'row' },
+            style = { Height = 12, MarginBottom = 12, FlexDirection = 'row' },
             bind = {
                 value = 'progress.value',
                 visible = 'progress.visible',
@@ -109,7 +141,7 @@ local template = ui.container {
         },
         -- report
         ui.button {
-            style = { Height = 30, MarginBottom = 8 },
+            style = { Height = 40, MarginBottom = 12 },
             bind = {
                 title = 'report.text',
                 color = 'report.color',
@@ -121,28 +153,56 @@ local template = ui.container {
                 end
             },
         },
-        -- start
-        ui.button {
-            title = lang.ui.START,
-            style = { Height = 50 },
-            bind = {
-                color = 'theme'
+        ui.container {
+            style = { Height = 44, FlexDirection = 'row', FlexShrink = 0 },
+            ui.button {
+                id = 'change_format',
+                title = lang.ui.CHANGE_FORMAT,
+                color = theme.raised,
+                style = { Width = 160, MarginRight = 12 },
+                bind = { enabled = 'actions.enabled' },
+                on = { click = function()
+                    if window._closing or worker and not worker.exited then return end
+                    window:show_page 'select'
+                end },
             },
-            on = {
-                click = function ()
-                    if worker and not worker.exited then
-                        return
-                    end
-                    backend:init(getexe(), fs.current_path())
-                    worker = backend:open('backend\\init.lua', {window._mode, window._filename:string()})
-                    backend.message = lang.ui.INIT
-                    backend.progress = 0
-                    data.progress.value = backend.progress / 100
-                    data.progress.visible = true
-                    data.report.visible = false
-                    timer.loop(100, delayedtask)
-                    window._worker = worker
-                end,
+            -- start
+            ui.button {
+                id = 'start',
+                style = { FlexGrow = 1 },
+                bind = {
+                    title = 'actions.start_text',
+                    enabled = 'actions.enabled',
+                    color = 'theme'
+                },
+                on = {
+                    click = function ()
+                        local ok, err = xpcall(function()
+                            if window._closing or worker and not worker.exited then
+                                return
+                            end
+                            local arguments = {window._mode, window._filename:string()}
+                            recovering, recovery_error = false, nil
+                            backend:init(getexe(), fs.current_path())
+                            local open_error
+                            worker, open_error = backend:open('backend\\init.lua', arguments)
+                            if not worker then error(open_error or 'The worker process could not be started.', 0) end
+                            backend.message = lang.ui.INIT
+                            backend.progress = 0
+                            data.progress.value = backend.progress / 100
+                            data.progress.visible = true
+                            data.report.visible = false
+                            timer.loop(100, delayedtask)
+                            window._worker = worker
+                            update_show()
+                        end, debug.traceback)
+                        if not ok and not window._closing then
+                            backend:clean()
+                            backend:failure(err)
+                            update_result()
+                        end
+                    end,
+                },
             },
         },
     },
@@ -152,6 +212,7 @@ view, data, element = ui.create(template, {
     filename = '',
     message  = '',
     theme = window._color,
+    actions = { enabled = true, start_text = lang.ui.START },
     report   = {
         text  = '',
         color = window._color,
@@ -173,17 +234,19 @@ local function checkbox(t)
         mouseenter = 'update_tip(self.tip)',
         mouseleave = 'update_tip()'
     }
-    t.style = { MarginTop = 4, MarginBottom = 4 }
+    t.style = { Height = 30, MarginTop = 2, MarginBottom = 2 }
     if t.bind then
-        t.bind.color = 'theme'
+        t.bind.enabled = 'enabled'
     else
-        t.bind = { color = 'theme' }
+        t.bind = { enabled = 'enabled' }
     end
     return ui.checkbox(t)
 end
 
-local configData = databinding {
+configData = databinding {
     theme = window._color,
+    panel = theme.surface,
+    enabled = true,
     config = config,
     update_tip = function(tip)
         if worker and not worker.exited then
@@ -199,7 +262,7 @@ local configData = databinding {
 
 local function lni()
     local template = ui.container {
-        font = { size = 18 },
+        font = { name = 'Segoe UI', size = 14 },
         checkbox {
             text = lang.ui.READ_SLK,
             tip = lang.ui.READ_SLK_HINT,
@@ -211,7 +274,7 @@ local function lni()
             text = lang.ui.ADVANCED,
             style = { MarginTop = 4, MarginBottom = 4 },
             bind = {
-                color = 'theme'
+                color = 'panel'
             },
             checkbox {
                 text = lang.ui.EXPORT_LUA,
@@ -234,7 +297,7 @@ end
 
 local function slk()
     local template = ui.container {
-        font = { size = 18 },
+        font = { name = 'Segoe UI', size = 14 },
         checkbox {
             text = lang.ui.REMOVE_UNUSED_OBJECT,
             tip = lang.ui.REMOVE_UNUSED_OBJECT_HINT,
@@ -267,7 +330,7 @@ local function slk()
             text = lang.ui.ADVANCED,
             style = { MarginTop = 4, MarginBottom = 4 },
             bind = {
-                color = 'theme'
+                color = 'panel'
             },
             checkbox {
                 text = lang.ui.SLK_DOODAD,
@@ -297,7 +360,7 @@ end
 
 local function obj()
     local template = ui.container {
-        font = { size = 18 },
+        font = { name = 'Segoe UI', size = 14 },
         checkbox {
             text = lang.ui.READ_SLK,
             tip = lang.ui.READ_SLK_HINT,
@@ -309,7 +372,7 @@ local function obj()
             text = lang.ui.ADVANCED,
             style = { MarginTop = 4, MarginBottom = 4 },
             bind = {
-                color = 'theme'
+                color = 'panel'
             },
             checkbox {
                 text = lang.ui.EXTRA_CHECK,
@@ -336,12 +399,15 @@ ev.on('update theme', function(color, title)
     backend.lastword = nil
     data.message = ''
     worker = nil
+    recovering, recovery_error = false, nil
+    update_show()
 
     configData.proxy.theme = color
 
     if current_page then
         current_page:setvisible(false)
     end
+    if title ~= 'W3x2Lni' and title ~= 'W3x2Slk' and title ~= 'W3x2Obj' and title ~= 'War3Dump' then return end
     if not pages[title] then
         if title == 'W3x2Lni' then
             pages[title] = lni()

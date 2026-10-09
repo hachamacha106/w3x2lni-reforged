@@ -1,5 +1,14 @@
 return {
 {
+    version = '1.1.0',
+    { 'FIX', 'Check archive write, finish and close failures' },
+    { 'UI', 'Readable conversion interface focused on LNI, OBJ and SLK' },
+    { 'UI', 'Keyboard controls and Change format navigation' },
+    { 'NEW', 'Report-only pjass verification with matching Warcraft declarations' },
+    { 'CHG', 'Pinned StormLib 9.40 and zlib 1.3.2 native build and provenance checks' },
+    { 'CHG', 'Research and verification ideas credited to devoltzz / Devo Map Doctor' },
+},
+{
     version = '1.0.0',
     { 'NEW', 'First W3x2lni Reforged release, maintained by hachamacha106' },
     { 'NEW', 'Current Warcraft data, map formats, object skins and trigger support' },

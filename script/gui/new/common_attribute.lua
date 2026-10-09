@@ -1,4 +1,5 @@
 local gui = require 'yue.gui'
+local theme = require 'gui.new.theme'
 
 local function BindValue(t, data, bind, name, func)
     if t.bind and t.bind[name] then
@@ -75,7 +76,7 @@ local function button_color(self1, self2, t, data, bind)
         self2:setbackgroundcolor(color_normal)
     end)
     BindValue(t, data, bind, 'color_hover', function (color)
-        color_hover = true
+        has_hover = true
         color_hover = color
         if not event then
             event = true
@@ -89,6 +90,15 @@ local function button_color(self1, self2, t, data, bind)
     end)
 end
 
+local function text_color(self, t, data, bind)
+    self:setcolor(theme.text)
+    BindValue(t, data, bind, 'text_color', function(value) self:setcolor(value) end)
+end
+
+local function enabled(self, t, data, bind)
+    BindValue(t, data, bind, 'enabled', function(value) self:setenabled(value) end)
+end
+
 local function visible(self, t, data, bind)
     BindValue(t, data, bind, 'visible', function (value)
         self:setvisible(value)
@@ -100,13 +110,11 @@ local fontDefault = gui.app:getdefaultfont()
 local fontName = fontDefault:getname()
 local fontSize = fontDefault:getsize()
 local function font(self, t)
-    if not t.font then
-        return
-    end
-    local name = t.font.name or fontName
-    local size = t.font.size or fontSize
-    local weight = t.font.weight or 'normal'
-    local style = t.font.style or 'normal'
+    local spec = t.font or { name = 'Segoe UI', size = 14 }
+    local name = spec.name or fontName
+    local size = spec.size or fontSize
+    local weight = spec.weight or 'normal'
+    local style = spec.style or 'normal'
     local key = ('%s|%d|%s|%s'):format(name, size, weight, style)
     local r = fontPool[key]
     if not r then
@@ -136,6 +144,8 @@ return {
     label_color = label_color,
     button_color = button_color,
     visible = visible,
+    enabled = enabled,
+    text_color = text_color,
     font = font,
     event = event,
 }

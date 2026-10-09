@@ -22,7 +22,8 @@ end
 
 function mt:close()
     if self._attach then
-        return false
+        -- The caller owns attached archive handles. No close is required here.
+        return true
     end
     return self.handle:close()
 end
@@ -45,10 +46,14 @@ function mt:save(w3i, w3f, w2l, args)
     local clock = os_clock()
     local count = 0
     for name, buf in pairs(self) do
+        local saved, save_error
         if args.clear_time then
-            self:save_file(name, buf, 0)
+            saved, save_error = self:save_file(name, buf, 0)
         else
-            self:save_file(name, buf)
+            saved, save_error = self:save_file(name, buf)
+        end
+        if not saved then
+            return false, ('Cannot save archive member %q: %s'):format(name, save_error or 'write failed')
         end
         count = count + 1
         if os_clock() - clock > 0.1 then

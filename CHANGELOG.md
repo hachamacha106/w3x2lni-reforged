@@ -3,6 +3,23 @@
 This file tracks **W3x2lni Reforged** releases. The original project's detailed
 history remains in [`script/share/changelog.lua`](script/share/changelog.lua).
 
+## 1.1.0 — 2026-10-09
+
+- Refresh the conversion interface with a high-contrast dark theme, clearer
+  format selection, native checkboxes and Change format navigation.
+- Support Space/Enter activation and prevent settings or format changes while
+  conversion is running.
+- Check archive create, write, finish, compact and close failures.
+- Add independent report-only pjass verification against the selected Warcraft
+  declarations before and after conversion. Lua maps are skipped explicitly.
+- Add a pinned Windows x86 StormLib 9.40 / static zlib 1.3.2 build. Packaging
+  validates retained, rebuilt and added native components separately.
+- Add regression and native smoke checks and preserve upstream license notices.
+- Credit devoltzz / Devo's Map Doctor for research and verification ideas.
+
+CascLib and the remaining upstream runtime are retained pending separate validation.
+Compatibility depends on the selected Warcraft dataset and the map being converted.
+
 ## 1.0.0 — W3x2lni Reforged 1.0
 
 The first release of this fork consolidates the current-Warcraft compatibility

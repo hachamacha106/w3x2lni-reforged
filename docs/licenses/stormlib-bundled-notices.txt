@@ -1,0 +1,45 @@
+Bundled components retained at StormLib 9.40 commit 6bb1882bd00ddbc3729cac5dac0fda81a61e5514.
+StormLib has its own MIT notice; bundled bzip2 has a separate full license.
+
+The following notices are copied from the pinned component source headers:
+
+libtomcrypt/src/hashes/sha1.c
+/* LibTomCrypt, modular cryptographic library -- Tom St Denis
+ *
+ * LibTomCrypt is a library that provides various cryptographic
+ * algorithms in a highly modular and flexible manner.
+ *
+ * The library is free for all purposes without any express
+ * guarantee it works.
+ *
+ * Tom St Denis, tomstdenis@gmail.com, http://libtom.org
+ */
+
+libtommath/bncore.c
+/* LibTomMath, multiple-precision integer library -- Tom St Denis
+ *
+ * LibTomMath is a library that provides multiple-precision
+ * integer arithmetic as well as number theoretic functionality.
+ *
+ * The library was designed directly after the MPI library by
+ * Michael Fromberger but has been written from scratch with
+ * additional optimizations in place.
+ *
+ * The library is free for all purposes without any express
+ * guarantee it works.
+ *
+ * Tom St Denis, tomstdenis@gmail.com, http://libtom.org
+ */
+
+lzma/C/LzmaDec.c
+/* LzmaDec.c -- LZMA Decoder
+2009-09-20 : Igor Pavlov : Public domain */
+
+pklib/pklib.h
+/*****************************************************************************/
+
+huffman/huff.cpp
+/*****************************************************************************/
+
+adpcm/adpcm.cpp
+/*****************************************************************************/

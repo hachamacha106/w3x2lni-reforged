@@ -86,3 +86,23 @@
 Ctrl+A：全选   Ctrl+C：复制所选文本
 [MAINTAINER]
 维护者：
+[CHOOSE_FORMAT]
+选择转换格式
+
+[LNI_DESCRIPTION]
+导出可编辑的项目文件夹，便于版本管理。
+
+[OBJ_DESCRIPTION]
+打包使用标准物体数据的地图。
+
+[SLK_DESCRIPTION]
+根据所选选项将物体数据转换为 SLK。
+
+[CONVERSION_OPTIONS]
+转换选项
+
+[CHANGE_FORMAT]
+更改格式
+
+[DRAG_MAP_HINT]
+将 .w3x、.w3m 地图或 LNI 项目文件夹拖到此处。

@@ -20,67 +20,39 @@ localized duplicate MPQ entries must be handled explicitly with the Python API.
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 import ctypes as C
 from dataclasses import asdict, dataclass
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
-import re
-import subprocess
+import importlib.util
 
 
-STORMLIB_COMMIT = "8f3f327697b392014cc084f4f3a3547ddb3a1b89"
+STORMLIB_COMMIT = "6bb1882bd00ddbc3729cac5dac0fda81a61e5514"
 STORMLIB_SOURCE = "https://github.com/ladislav-zezula/StormLib"
 INTERNAL_FILES = {"(listfile)", "(attributes)", "(signature)"}
 DWORD, HANDLE = C.c_uint32, C.c_void_p
 
 
+def native_builder():
+    spec = importlib.util.spec_from_file_location(
+        "w2l_native_runtime", Path(__file__).resolve().parents[2] / "make/native_runtime.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def build_stormlib(source: Path, output: Path) -> Path:
-    """Compile the source list and bundled dependencies from pinned CMakeLists."""
-    source, output = source.resolve(), output.resolve()
-    revision = subprocess.check_output(
-        ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
-    ).strip()
-    if revision != STORMLIB_COMMIT:
-        raise ValueError(f"Expected pinned StormLib {STORMLIB_COMMIT}, got {revision}")
-    cmake = (source / "CMakeLists.txt").read_text()
-    sources = []
-    for group in ("SRC_FILES", "TOMCRYPT_FILES", "TOMMATH_FILES", "BZIP2_FILES", "ZLIB_FILES"):
-        match = re.search(r"set\(" + group + r"\s+(.*?)\n\)", cmake, re.S)
-        if match is None:
-            raise ValueError(f"Missing CMake source group: {group}")
-        sources.extend(re.findall(r"src/[^\s)]+\.(?:c|cpp)\b", match[1]))
-    output.mkdir(parents=True, exist_ok=True)
-    objects = output / "objects"
-    objects.mkdir(exist_ok=True)
-
-    def compile_one(name):
-        target = objects / (name.replace("/", "_") + ".o")
-        compiler = "g++" if name.endswith(".cpp") else "gcc"
-        command = [compiler, "-O2", "-fPIC", "-D_7ZIP_ST", "-DBZ_STRICT_ANSI", "-I", str(source / "src")]
-        if compiler == "g++":
-            command.append("-std=c++11")
-        command += ["-c", str(source / name), "-o", str(target)]
-        result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        return result.returncode, command, result.stdout, target
-
-    with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
-        results = list(pool.map(compile_one, sources))
-    (output / "build.log").write_text("\n".join(
-        " ".join(command) + "\n" + log for _, command, log, _ in results
-    ))
-    failures = [log for code, _, log, _ in results if code]
-    if failures:
-        raise RuntimeError(f"StormLib compilation failed; see {output / 'build.log'}\n{failures[0]}")
-    library = output / "libstorm.so"
-    subprocess.run(["g++", "-shared", "-Wl,--no-undefined", "-o", str(library),
-                    *(str(target) for _, _, _, target in results)], check=True)
+    """Use the same pinned CMake recipe and compiled ABI probe as Windows."""
+    module = native_builder()
+    library = module.build("linux-x64", output, source=source)
+    manifest = json.loads((output / "manifest.json").read_text())
     (output / "provenance.json").write_text(json.dumps({
-        "source": STORMLIB_SOURCE, "commit": revision,
-        "sha256": hashlib.sha256(library.read_bytes()).hexdigest(),
-        "source_files": sources,
+        "source": STORMLIB_SOURCE, "commit": STORMLIB_COMMIT,
+        "dependencies": manifest["components"][0]["sources"],
+        "sha256": module.sha256(library),
+        "manifest": "manifest.json", "abi": "abi.json",
         "purpose": "Linux test-only MPQ bridge; not the Windows application DLL",
     }, indent=2) + "\n")
     return library
@@ -108,9 +80,30 @@ class StormLib:
     def __init__(self, library: str | Path):
         if os.name == "nt":
             raise RuntimeError("This test bridge targets the pinned Linux ABI, not Windows DLLs")
-        self.lib = C.CDLL(str(Path(library).resolve()))
+        library = Path(library).resolve()
+        module = native_builder()
+        manifest = json.loads((library.parent / "manifest.json").read_text())
+        probe = json.loads((library.parent / "abi.json").read_text())
+        module.validate_probe(probe, "linux-x64")
+        component = manifest["components"][0]
+        if (manifest.get("schema_version") != 1 or manifest.get("target") != "linux-x64"
+                or component.get("path") != "libstorm.so" or component.get("origin") != "rebuilt"
+                or component.get("sources") != module.PINS
+                or component.get("sha256") != module.sha256(library)
+                or component.get("probe", {}).get("status") != "passed"
+                or component.get("probe", {}).get("data") != probe
+                or component.get("probe", {}).get("abi_sha256") != module.sha256(library.parent / "abi.json")):
+            raise ValueError("Linux native bridge provenance mismatch")
+        fields = ("cFileName", "szPlainName", "dwHashIndex", "dwBlockIndex", "dwFileSize",
+                  "dwFileFlags", "dwCompSize", "dwFileTimeLo", "dwFileTimeHi", "lcLocale")
+        expected = {native: getattr(FindData, python).offset
+                    for native, (python, _) in zip(fields, FindData._fields_)}
+        if (probe["sizes"]["SFILE_FIND_DATA"] != C.sizeof(FindData)
+                or probe["offsets"]["find"] != expected):
+            raise ValueError("Linux ctypes layout differs from compiled StormLib headers")
+        self.lib = C.CDLL(str(library))
         signatures = {
-            "GetLastError": (DWORD, []),
+            "SErrGetLastError": (DWORD, []),
             "SFileSetLocale": (DWORD, [DWORD]),
             "SFileOpenArchive": (C.c_bool, [C.c_char_p, DWORD, DWORD, C.POINTER(HANDLE)]),
             "SFileCreateArchive": (C.c_bool, [C.c_char_p, DWORD, DWORD, C.POINTER(HANDLE)]),
@@ -133,7 +126,7 @@ class StormLib:
 
     def check(self, ok, operation):
         if not ok:
-            raise OSError(int(self.lib.GetLastError()), operation)
+            raise OSError(int(self.lib.SErrGetLastError()), operation)
 
     def open(self, path: str | Path) -> "Archive":
         handle = HANDLE()
@@ -178,7 +171,7 @@ class Archive:
         data = FindData()
         handle = self.storm.lib.SFileFindFirstFile(self.handle, b"*", C.byref(data), None)
         if not handle:
-            code = self.storm.lib.GetLastError()
+            code = self.storm.lib.SErrGetLastError()
             if code in (2, 1001):
                 return []
             raise OSError(code, "SFileFindFirstFile")
@@ -188,7 +181,7 @@ class Archive:
                 found.append(Member(data.filename.decode("utf-8", "surrogateescape"), data.size,
                                     data.compressed_size, data.flags, data.locale, data.block_index))
                 if not self.storm.lib.SFileFindNextFile(handle, C.byref(data)):
-                    code = self.storm.lib.GetLastError()
+                    code = self.storm.lib.SErrGetLastError()
                     if code != 1001:
                         raise OSError(code, "SFileFindNextFile")
                     break

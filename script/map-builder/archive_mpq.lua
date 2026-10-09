@@ -50,8 +50,9 @@ mt.__index = mt
 
 function mt:save(path, w3i, w3f, filecount, args)
     if self.handle then
-        self.handle:close()
+        local closed, close_error = self.handle:close()
         self.handle = nil
+        if closed == false then return false, close_error end
     end
     args = args or {}
     local hexs = {}
@@ -79,6 +80,7 @@ function mt:save(path, w3i, w3f, filecount, args)
 end
 
 function mt:close()
+    if not self.handle then return true end
     return self.handle:close()
 end
 

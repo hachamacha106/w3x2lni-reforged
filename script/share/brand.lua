@@ -9,6 +9,8 @@ local modes = {
     W3x2Slk = 'SLK',
     W3x2Obj = 'OBJ',
     War3Dump = 'Game data',
+    Analyze = 'Analyze',
+    Optimize = 'Optimize',
 }
 
 function brand.window_title(mode)
