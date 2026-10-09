@@ -7,3 +7,7 @@ template/** linguist-vendored
 
 # Supplied game-data provenance uses byte hashes; never normalize these inputs.
 data/warcraft-current/mpq/** -text
+
+# Golden trigger files must retain the exact CRLF bytes embedded in WCT fixtures.
+test/unit_test/wtg转lml-旧版本/trigger/** -text
+test/unit_test/wtg转lml-新版本/trigger/** -text
