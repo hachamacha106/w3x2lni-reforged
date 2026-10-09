@@ -1,13 +1,14 @@
 local gui = require 'yue.gui'
 local ca = require 'gui.new.common_attribute'
 local timer = require 'gui.timer'
+local theme = require 'gui.new.theme'
 
 return function (t, data)
     local view = gui.Container.create()
     if t.style then
         view:setstyle(t.style)
     end
-    view:setbackgroundcolor '#444'
+    view:setbackgroundcolor(theme.raised)
     local frontlabel = gui.Label.create('')
     view:addchildview(frontlabel)
     local frontground = 0

@@ -1,5 +1,7 @@
 local gui = require 'yue.gui'
 local ca = require 'gui.new.common_attribute'
+local theme = require 'gui.new.theme'
+local key_activation = require 'gui.new.key_activation'
 
 return function (t, data)
     local btn = gui.Button.create('')
@@ -16,13 +18,19 @@ return function (t, data)
     if t.style then
         btn:setstyle(t.style)
     end
-    if t.on and t.on.click then
-        function btn:onclick()
-            t.on.click(self, t)
-        end
+    local function click()
+        if btn:isenabled() and t.on and t.on.click then t.on.click(btn, t) end
     end
+    local clear_key = key_activation(btn, click)
+    function btn:onclick()
+        clear_key()
+        click()
+    end
+    btn:setbackgroundcolor(theme.raised)
     ca.font(btn, t)
+    ca.text_color(btn, t, data, bind)
     ca.button_color(btn, btn, t, data, bind)
     ca.visible(btn, t, data, bind)
+    ca.enabled(btn, t, data, bind)
     return btn
 end

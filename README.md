@@ -1,6 +1,6 @@
 # W3x2lni Reforged
 
-> Development for **1.1.0** adds Analyze / lossless Optimize actions, report-only
+> Development for **1.1.0** improves the conversion interface, adds report-only
 > pjass checks and a verified StormLib/zlib build path. This source candidate
 > requires successful Actions and manual editor/game acceptance before release.
 > See [1.1 candidate notes](docs/releases/1.1.0.md).

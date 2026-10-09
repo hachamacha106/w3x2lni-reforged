@@ -9,8 +9,6 @@ local list = {
     config = lang.raw.HELP_CONFIG .. '\r\n\r\n' .. lang.raw.HELP_CONFIG_DESC,
     version = lang.raw.HELP_VERSION,
     log = lang.raw.HELP_LOG,
-    analyze = lang.raw.HELP_ANALYZE,
-    optimize = lang.raw.HELP_OPTIMIZE,
 }
 
 if arg[2] and list[arg[2]] then
@@ -23,8 +21,6 @@ local cmd = [[
     lni       {HELP_LNI}
     obj       {HELP_OBJ}
     slk       {HELP_SLK}
-    analyze   {HELP_ANALYZE}
-    optimize  {HELP_OPTIMIZE}
 
     log       {HELP_LOG}
     config    {HELP_CONFIG}

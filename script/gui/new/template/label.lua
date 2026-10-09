@@ -22,17 +22,9 @@ return function (t, data)
         label:setvalign(t.valign)
     end
     local bind = {}
-    if t.bind and t.bind.text_color then
-        bind.text_color = data:bind(t.bind.text_color, function()
-            label:setcolor(bind.text_color:get())
-        end)
-        label:setcolor(bind.text_color:get())
-    else
-        if t.text_color then
-            label:setcolor(t.text_color)
-        end
-    end
+    ca.text_color(label, t, data, bind)
     ca.font(label, t)
     ca.label_color(label, t, data, bind)
+    ca.visible(label, t, data, bind)
     return label
 end

@@ -2,10 +2,11 @@ return {
 {
     version = '1.1.0',
     { 'FIX', 'Check archive write, finish and close failures' },
-    { 'NEW', 'Analyze maps and compare lossless archive compression candidates' },
+    { 'UI', 'Readable conversion interface focused on LNI, OBJ and SLK' },
+    { 'UI', 'Keyboard controls and Change format navigation' },
     { 'NEW', 'Report-only pjass verification with matching Warcraft declarations' },
     { 'CHG', 'Pinned StormLib 9.40 and zlib 1.3.2 native build and provenance checks' },
-    { 'CHG', 'Optimization ideas credited to devoltzz / Devo Map Doctor' },
+    { 'CHG', 'Research and verification ideas credited to devoltzz / Devo Map Doctor' },
 },
 {
     version = '1.0.0',

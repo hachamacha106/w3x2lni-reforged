@@ -1,11 +1,12 @@
 local gui = require 'yue.gui'
 local ev = require 'gui.event'
 local ca = require 'gui.new.common_attribute'
+local theme = require 'gui.new.theme'
 
 local function tree_icon(view)
     local canvas1 = gui.Canvas.createformainscreen{width=24, height=24}
     local painter = canvas1:getpainter()
-    painter:setfillcolor('#CCC')
+    painter:setfillcolor(theme.muted)
     painter:beginpath()
     painter:moveto(4, 4)
     painter:lineto(20, 4)
@@ -15,7 +16,7 @@ local function tree_icon(view)
     painter:fill()
     local canvas2 = gui.Canvas.createformainscreen{width=24, height=24}
     local painter = canvas2:getpainter()
-    painter:setfillcolor('#CCC')
+    painter:setfillcolor(theme.muted)
     painter:beginpath()
     painter:moveto(4, 4)
     painter:lineto(4, 20)
@@ -34,7 +35,8 @@ end
 
 local function tree_label(t)
     local label = gui.Label.create(t.text)
-    label:setstyle { Height = 24, Top = 2, Left = 24 }
+    label:setstyle { Height = 32, MarginLeft = 30 }
+    label:setcolor(t.text_color or theme.text)
     label:setalign 'start'
     ca.font(label, t)
     return label
@@ -42,7 +44,7 @@ end
 
 local function tree_button(t, children)
     local btn = gui.Container.create()
-    btn:setstyle { Height = 24, FlexGrow = 1 }
+    btn:setstyle { Height = 32, FlexGrow = 1, FlexShrink = 0 }
     btn.select = t.select or false
     local function update_select()
         if btn.select then
@@ -72,9 +74,10 @@ return function (t, data)
         o:setstyle(t.style)
     end
     local children = tree_children(t)
-    children:setstyle { Padding = 4 }
+    children:setstyle { Padding = 6 }
     local btn = tree_button(t, children)
     local bind = {}
+    btn:setbackgroundcolor(theme.surface)
     ca.button_color(btn, btn, t, data, bind)
     o:addchildview(btn)
     o:addchildview(children)

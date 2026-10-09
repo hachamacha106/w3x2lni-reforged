@@ -44,6 +44,11 @@ local function create_app(locale)
     function methods:setalign(align) self.align = align end
     function methods:setvalign(align) self.valign = align end
     function methods:setvisible(visible) self.visible = visible end
+    function methods:setenabled(enabled) self.enabled = enabled end
+    function methods:isenabled() return self.enabled ~= false end
+    function methods:setchecked(checked) self.checked = checked end
+    function methods:ischecked() return self.checked or false end
+    function methods:schedulepaint() self.paints = (self.paints or 0) + 1 end
     function methods:settitle(title) self.title = title end
     function methods:addchildview(child)
         if child.parent then child.parent:removechildview(child) end
@@ -143,8 +148,11 @@ local function create_app(locale)
         Label = {create = function(text)
             local view = control('Label'); view:settext(text); return view
         end},
-        Button = {create = function(title)
-            local view = control('Button'); view:settitle(title); return view
+        Button = {create = function(options)
+            local view = control('Button')
+            view.options = type(options) == 'table' and options or {}
+            view:settitle(type(options) == 'table' and options.title or options)
+            return view
         end},
         Entry = {create = function()
             local view = control('Entry')
@@ -158,6 +166,13 @@ local function create_app(locale)
             local view = control('TextEdit'); view.options = options; return view
         end},
         Scroll = {create = function() return control('Scroll') end},
+        Canvas = {createformainscreen = function(size)
+            local painter = {}
+            for _, method in ipairs {'setfillcolor', 'beginpath', 'moveto', 'lineto', 'closepath', 'fill', 'drawcanvas'} do
+                painter[method] = function() end
+            end
+            return {getpainter = function() return painter end, size = size}
+        end},
         Event = {maskshift = 2, maskcontrol = 4, maskalt = 8, maskmeta = 16},
         Window = {create = function(options)
             local win = control('Window')
@@ -247,9 +262,15 @@ local function create_app(locale)
         ['gui.new.template'] = true,
         ['gui.new.databinding'] = true,
         ['gui.new.common_attribute'] = true,
+        ['gui.new.theme'] = true,
+        ['gui.new.key_activation'] = true,
+        ['gui.new.page.select'] = true,
         ['gui.new.template.container'] = true,
         ['gui.new.template.label'] = true,
         ['gui.new.template.button'] = true,
+        ['gui.new.template.checkbox'] = true,
+        ['gui.new.template.tree'] = true,
+        ['gui.new.template.progress'] = true,
         ['gui.new.template.textedit'] = true,
         ['gui.new.template.entry'] = true,
         ['gui.new.template.scroll'] = true,
@@ -301,6 +322,7 @@ end
 local function click(button)
     assert(type(button.onclick) == 'function',
         'Buttons must use native click activation, including the keyboard')
+    if button.options and button.options.type == 'checkbox' then button:setchecked(not button:ischecked()) end
     button:onclick()
 end
 
@@ -325,10 +347,10 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     equal(native.options.frame, true, 'The main window needs a native resize frame')
     assert(native.resizable and native.maximizable and native.minimizable,
         'Native resize, maximize and minimize must all be enabled')
-    equal(native.minimum.width, 400, 'Minimum content width changed unexpectedly')
-    equal(native.minimum.height, 600, 'Minimum content height changed unexpectedly')
-    equal(native.contentsize.width, 720, 'Use a wider initial report window')
-    equal(native.contentsize.height, 600)
+    assert(native.minimum.width >= 400, 'Keep a usable minimum content width')
+    assert(native.minimum.height >= 600, 'Keep a usable minimum content height')
+    assert(native.contentsize.width >= 720, 'Use a wide initial report window')
+    assert(native.contentsize.height >= 600, 'Use a tall initial conversion window')
     assert(app.registered and app.icon_set and app.loop_run)
     local index_page = window._page
     assert(index_page.visible)
@@ -446,7 +468,7 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     click(back_button)
     equal(window._page, app.convert, 'Back must return to conversion')
     assert(app.convert.visible and app.convert.shows == 1 and not report_page.visible)
-    window:set_theme('W3x2Slk', '#00AD3C')
+    window:set_theme('W3x2Slk', app.require('gui.new.theme').modes.slk)
     equal(native.title, 'W3x2lni Reforged - SLK',
         'The native titlebar must identify the fork and conversion mode')
 
@@ -495,7 +517,208 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
 end
 
 
--- The actual output entry must read user edits back into the binding without
+-- The actual widget factories must apply foreground and visibility defaults.
+-- In particular, hiding a parent container must not leave an archive output
+-- label/entry on unrelated conversion pages.
+local function contrast(first, second)
+    local function luminance(color)
+        assert(type(color) == 'string' and color:match('^#%x%x%x%x%x%x$'),
+            'Readable theme colors must use explicit RGB values')
+        local values = {}
+        for i = 2, 6, 2 do
+            local value = tonumber(color:sub(i, i + 1), 16) / 255
+            values[#values + 1] = value <= 0.04045 and value / 12.92 or ((value + 0.055) / 1.055)^2.4
+        end
+        return values[1] * 0.2126 + values[2] * 0.7152 + values[3] * 0.0722
+    end
+    local a, b = luminance(first), luminance(second)
+    return (math.max(a, b) + 0.05) / (math.min(a, b) + 0.05)
+end
+
+for _, locale in ipairs {'enUS', 'zhCN'} do
+    local app = create_app(locale)
+    local ui = app.require('gui.new.template')
+    local palette = app.require('gui.new.theme')
+    for _, background in ipairs {palette.background, palette.surface, palette.raised,
+        palette.hover, palette.error, palette.warning} do
+        assert(contrast(palette.text, background) >= 4.5,
+            'Primary text needs readable contrast on every control surface')
+    end
+    for _, background in pairs(palette.modes) do
+        assert(contrast(palette.text, background) >= 4.5, 'Every format accent must support readable text')
+    end
+    assert(contrast(palette.muted, palette.background) >= 4.5, 'Hints must remain readable')
+    local activations = 0
+    local view, data, elements = ui.create(ui.container {
+        id = 'parent', bind = {visible = 'panel.visible'},
+        ui.label {id = 'caption', text = 'Visible state', bind = {visible = 'caption.visible'}},
+        ui.container {id = 'static_parent', visible = false},
+        ui.label {id = 'static_label', text = 'Hidden label', visible = false},
+        ui.label {id = 'color_label', text = 'Bound color', bind = {text_color = 'foreground'}},
+        ui.button {id = 'button', title = 'Readable action', bind = {enabled = 'action.enabled'},
+            on = {click = function() activations = activations + 1 end}},
+        ui.checkbox {id = 'checkbox', text = 'Readable setting', bind = {value = 'setting'}},
+        ui.checkbox {id = 'checkbox_mirror', text = 'Shared setting', bind = {value = 'setting'}},
+        ui.tree {id = 'tree', text = 'Readable advanced settings'},
+    }, {panel = {visible = false}, caption = {visible = false}, action = {enabled = false}, setting = false, foreground = palette.muted})
+    assert(not view.visible and not elements.caption.visible,
+        'Real container and label factories must honor initial false visibility')
+    assert(not elements.static_parent.visible and not elements.static_label.visible,
+        'Static visibility must use the same widget contract')
+    data.panel.visible, data.caption.visible = true, true
+    assert(view.visible and elements.caption.visible)
+    data.panel.visible, data.caption.visible = false, false
+    assert(not view.visible and not elements.caption.visible,
+        'Visibility bindings must update real native-boundary widgets')
+    equal(elements.color_label.color, palette.muted, 'Explicit text-color bindings must override the default')
+    data.foreground = palette.text
+    equal(elements.color_label.color, palette.text, 'Text-color binding updates must reach the real label factory')
+    equal(elements.caption.color, palette.text, 'Plain labels must use an explicit readable foreground')
+    equal(elements.button.color, palette.text, 'Plain buttons must use an explicit readable foreground')
+    assert(not elements.button.enabled, 'A bound unavailable action must disable its native button')
+    data.action.enabled = true
+    assert(elements.button.enabled)
+    data.action.enabled = false
+    assert(not elements.button.enabled, 'Enabled bindings must update the actual native-boundary button')
+    for _, label in ipairs(descendants(elements.checkbox, 'Label')) do
+        if label.text ~= '' then equal(label.color, palette.text, 'Checkbox text must use readable foreground') end
+    end
+    for _, label in ipairs(descendants(elements.tree, 'Label')) do
+        if label.text ~= '' then equal(label.color, palette.text, 'Advanced headers must use readable foreground') end
+    end
+    if elements.button.onmouseenter then elements.button:onmouseenter() end
+    equal(elements.button.color, palette.text, 'Hover must not reset button text to native black')
+    assert(contrast(elements.button.color, elements.button.background) >= 4.5)
+    if elements.button.onmouseleave then elements.button:onmouseleave() end
+    assert(contrast(elements.button.color, elements.button.background) >= 4.5)
+    local action = elements.button
+    equal(action:onkeydown {key = 'Space', modifiers = 0}, true)
+    equal(action:onkeyup {key = 'Space', modifiers = 0}, true)
+    action:onclick()
+    equal(activations, 0, 'Disabled action must ignore keyboard and click activation')
+    data.action.enabled = true
+    for _ = 1, 4 do
+        equal(action:onkeydown {key = 'SPACE', modifiers = 0}, true)
+        equal(activations, 0, 'Action Space autorepeat must wait for release')
+    end
+    equal(action:onkeyup {key = 'Space', modifiers = 0}, true)
+    equal(activations, 1, 'Action Space release must activate exactly once')
+    equal(action:onkeyup {key = 'Space', modifiers = 0}, true)
+    equal(activations, 1, 'Action release without a press must not activate')
+    equal(action:onkeydown {key = 'Return', modifiers = 0}, true)
+    equal(action:onkeyup {key = 'Enter', modifiers = 0}, true)
+    equal(activations, 2, 'Ordinary action must support Return/Enter alias activation')
+    equal(action:onkeydown {key = 'Enter', modifiers = 0}, true)
+    equal(action:onkeyup {key = 'Return', modifiers = 0}, true)
+    equal(activations, 3)
+    equal(action:onkeydown {key = 'Space', modifiers = app.gui.Event.maskcontrol}, false)
+    equal(action:onkeyup {key = 'Space', modifiers = app.gui.Event.maskcontrol}, false)
+    equal(activations, 3, 'Modified action keys must not activate')
+    equal(action:onkeydown {key = 'Space', modifiers = 0}, true)
+    data.action.enabled = false
+    equal(action:onkeyup {key = 'Space', modifiers = 0}, true)
+    equal(activations, 3, 'Disabling an action between press/release must prevent activation')
+    data.action.enabled = true
+    equal(action:onkeyup {key = 'Space', modifiers = 0}, true)
+    equal(activations, 3, 'A disabled release must clear the armed key before enabling again')
+    equal(action:onkeydown {key = 'Space', modifiers = 0}, true)
+    action:onclick()
+    equal(activations, 4, 'Ordinary mouse click must still activate the action')
+    equal(action:onkeyup {key = 'Space', modifiers = 0}, true)
+    equal(activations, 4, 'Mouse activation must not leave an armed ordinary-button key')
+    local checkbox_buttons = descendants(elements.checkbox, 'Button')
+    assert(#checkbox_buttons >= 1)
+    if checkbox_buttons[1].onclick then click(checkbox_buttons[1])
+    else assert(checkbox_buttons[1].onmousedown); checkbox_buttons[1]:onmousedown() end
+    equal(data.setting, true, 'Readable checkbox styling must preserve two-way option binding')
+    equal(checkbox_buttons[1].color, palette.text, 'Native checkbox titles must use readable foreground')
+    data.setting = false
+    assert(not checkbox_buttons[1]:ischecked(), 'Programmatic checkbox changes must update the native checkmark')
+    local checkbox = checkbox_buttons[1]
+    local mirror = descendants(elements.checkbox_mirror, 'Button')[1]
+    assert(mirror and checkbox.onkeydown and checkbox.onkeyup,
+        'The retained native checkbox needs explicit keyboard activation')
+    local function checked(value, message)
+        equal(data.setting, value, message)
+        equal(checkbox:ischecked(), value, 'Keyboard activation must update the source checkmark')
+        equal(mirror:ischecked(), value, 'Keyboard activation must update another binding subscriber')
+    end
+    for _ = 1, 4 do
+        equal(checkbox:onkeydown {key = 'SPACE', modifiers = 0}, true)
+        checked(false, 'Space keydown/autorepeat must not toggle before release')
+    end
+    equal(checkbox:onkeyup {key = 'Space', modifiers = 0}, true)
+    checked(true, 'One Space release must toggle exactly once after autorepeat')
+    equal(checkbox:onkeyup {key = 'Space', modifiers = 0}, true)
+    checked(true, 'Release without a fresh press must not toggle')
+    equal(checkbox:onkeydown {key = 'Return', modifiers = 0}, true)
+    checked(true, 'Return keydown must wait for release')
+    equal(checkbox:onkeyup {key = 'ENTER', modifiers = 0}, true)
+    checked(false, 'Return/Enter aliases must share one activation')
+    equal(checkbox:onkeydown {key = 'Enter', modifiers = 0}, true)
+    equal(checkbox:onkeyup {key = 'return', modifiers = 0}, true)
+    checked(true)
+    for _, modifier in ipairs {app.gui.Event.maskcontrol, app.gui.Event.maskalt, app.gui.Event.maskmeta,
+        app.gui.Event.maskcontrol | app.gui.Event.maskshift} do
+        equal(checkbox:onkeydown {key = 'Space', modifiers = modifier}, false)
+        equal(checkbox:onkeyup {key = 'Space', modifiers = modifier}, false)
+        checked(true, 'Modified activation keys must not change the option')
+    end
+    equal(checkbox:onkeydown {key = 'Space', modifiers = 0}, true)
+    equal(checkbox:onkeyup {key = 'Space', modifiers = app.gui.Event.maskcontrol}, false)
+    equal(checkbox:onkeyup {key = 'Space', modifiers = 0}, true)
+    checked(true, 'A modified release must disarm the pending plain activation')
+    equal(checkbox:onkeydown {key = 'Space', modifiers = 0}, true)
+    equal(checkbox:onkeydown {key = 'Tab', modifiers = 0}, false)
+    equal(checkbox:onkeyup {key = 'Tab', modifiers = 0}, false)
+    equal(checkbox:onkeyup {key = 'Space', modifiers = 0}, true)
+    checked(true, 'Unrelated Tab navigation must neither toggle nor retain a pending activation')
+    equal(checkbox:onkeydown {key = 'Space', modifiers = 0}, true)
+    equal(checkbox:onkeyup {key = 'Enter', modifiers = 0}, true)
+    equal(checkbox:onkeyup {key = 'Space', modifiers = 0}, true)
+    checked(true, 'Mismatched activation-key releases must clear the pending press')
+    equal(checkbox:onkeydown {key = 'Space', modifiers = app.gui.Event.maskshift}, true)
+    equal(checkbox:onkeyup {key = 'Space', modifiers = app.gui.Event.maskshift}, true)
+    checked(false, 'Shift alone must not block checkbox activation')
+    equal(checkbox:onkeydown {key = 'Space', modifiers = 0}, true)
+    click(checkbox)
+    checked(true, 'Mouse activation must retain shared option binding')
+    equal(checkbox:onkeyup {key = 'Space', modifiers = 0}, true)
+    checked(true, 'Mouse activation must clear an armed keyboard toggle')
+    print('PASS ' .. locale .. ' actual visibility, readable theme, button/checkbox keyboard and shared binding')
+
+    local window = app.window
+    window._filename = path(root .. '/_NarutoRPGPlus1.131testv2_editor3')
+    window:show_page('select')
+    local selection = window._page
+    equal(#descendants(selection, 'Entry'), 0, 'Selection must not offer an archive output field')
+    local choices = descendants(selection, 'Button')
+    equal(#choices, 3, 'Selection must offer exactly the three existing conversion formats')
+    local found = {}
+    for _, choice in ipairs(choices) do
+        local mode = assert(choice.title:lower():match('(lni)$') or choice.title:lower():match('(slk)$')
+            or choice.title:lower():match('(obj)$'), 'Unexpected/retired selection action')
+        assert(not found[mode], 'Conversion choice duplicated')
+        found[mode] = true
+        assert(contrast(choice.color, choice.background) >= 4.5, 'Conversion buttons need readable text')
+        if choice.onmouseenter then choice:onmouseenter() end
+        assert(contrast(choice.color, choice.background) >= 4.5, 'Hover must preserve conversion action contrast')
+        if choice.onmouseleave then choice:onmouseleave() end
+        local filename = window._filename
+        click(choice)
+        equal(window._mode, mode, 'Existing format choice must select its conversion mode')
+        equal(window._filename, filename, 'Format choice must preserve LNI folder input')
+        equal(window._page, app.convert)
+        window:show_page('select')
+    end
+    assert(found.lni and found.slk and found.obj)
+    for _, label in ipairs(descendants(selection, 'Label')) do
+        if label.text ~= '' then assert(label.color and label.color ~= '#000', 'Selection labels must not inherit native black') end
+    end
+    print('PASS ' .. locale .. ' only LNI/OBJ/SLK selection actions, folder preservation and readable labels')
+end
+
+-- The reusable Entry template must read user edits back into the binding without
 -- touching the report TextEdit's unsafe complete-log getter or recursing on
 -- programmatic settext signals.
 do
@@ -536,35 +759,40 @@ do
     assert(not elements.mirror:onkeydown {key = 'Tab', modifiers = 0}, 'Entry without a Tab destination must not consume Tab')
     equal(#tab_events, 2, 'Modified Tab and other keys must not call the focus destination')
     equal(data.output.text, root .. '/Programmatic next output.w3x', 'Keyboard focus navigation must not change output text')
-    print('PASS editable output Entry Unicode round-trip, shared binding, visibility, keyboard navigation and recursion guard')
+    print('PASS reusable Entry Unicode round-trip, shared binding, visibility, keyboard navigation and recursion guard')
 end
 
--- Exercise the actual action/output handlers with a strict path/worker
--- boundary. No native GUI is opened and no map files are written.
+-- Exercise the ordinary conversion handlers with a strict path/worker
+-- boundary. Retired archive actions have no controls; existing conversion,
+-- diagnostics, recovery and process lifecycle coverage remains active.
 for _, locale in ipairs {'enUS', 'zhCN'} do
     local app = create_app(locale)
     local labels = app.lang.ui
-    equal(app.require('share.brand').window_title('Analyze'), 'W3x2lni Reforged - Analyze')
-    equal(app.require('share.brand').window_title('Optimize'), 'W3x2lni Reforged - Optimize')
-    local observed = {opens = {}, errors = {}, events = {}, loops = 0, timers = {}, sources = {}}
+    local palette = app.require('gui.new.theme')
+    local observed = {opens = {}, errors = {}, events = {}, loops = 0, timers = {}, settings = {}}
     local ui = {}
-    for _, kind in ipairs {'container', 'button', 'label', 'progress', 'checkbox', 'tree', 'entry'} do
-        ui[kind] = function(template) return template end
+    for _, kind in ipairs {'container', 'button', 'label', 'progress', 'checkbox', 'tree', 'entry', 'scroll'} do
+        ui[kind] = function(template) template.class = kind; return template end
     end
     local captured, captured_data = {}, {}
+    local elements = {
+        config = {addchildview = function() end},
+        start = {focus = function() observed.focus = 'start' end},
+        filename = {focus = function() observed.focus = 'filename' end},
+        change_format = {focus = function() observed.focus = 'change_format' end},
+    }
     function ui.create(template, data)
         captured[#captured + 1] = template
         captured_data[#captured_data + 1] = data
-        return {setvisible = function() end}, data, {
-            config = {addchildview = function() end},
-            start = {focus = function() observed.focus = 'start' end},
-            filename = {focus = function() observed.focus = 'filename' end},
-        }
+        return {setvisible = function() end}, data, elements
     end
-    ui.createEx = function() return {setvisible = function() end} end
+    function ui.createEx(template, binding)
+        local view = {setvisible = function(self, value) self.visible = value end}
+        observed.settings[#observed.settings + 1] = {template = template, binding = binding, view = view}
+        return view
+    end
     local window = app.window
-    window._filename, window._color = path(root .. '/Maps with spaces/input.w3x'), '#00ADD9'
-    observed.sources[window._filename:string()] = true
+    window._filename, window._color = path(root .. '/Maps with spaces/input.w3x'), palette.modes.lni
     function window:set_theme(title, color)
         self._color = color
         for _, listener in ipairs(observed.events) do listener(color, title) end
@@ -599,45 +827,32 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
         observed.opens[#observed.opens + 1] = arguments
         return worker
     end
+    local configuration = {
+        lni = {read_slk = true, export_lua = false, extra_check = false},
+        obj = {read_slk = true, extra_check = false},
+        slk = {remove_unuse_object = true, optimize_jass = false, mdx_squf = false,
+            remove_we_only = true, slk_doodad = false, confused = false, extra_check = false},
+    }
     local dependencies = {
-        ['yue.gui'] = app.gui,
+        ['yue.gui'] = app.gui, ['gui.new.theme'] = palette,
         ['gui.backend'] = backend,
         ['gui.timer'] = {loop = function(_, callback)
             observed.loops = observed.loops + 1
             observed.timers[#observed.timers + 1] = callback
         end},
         ['ffi.messagebox'] = function(...) observed.errors[#observed.errors + 1] = {...} end,
-        ['share.lang'] = {ui = labels}, ['share.config'] = {},
+        ['share.lang'] = {ui = labels}, ['share.config'] = configuration,
         ['gui.push_error'] = function() error('Unexpected worker error') end,
         ['gui.new.template'] = ui,
         ['gui.new.databinding'] = function(data) return {proxy = data} end,
         ['gui.event'] = {on = function(_, listener) observed.events[#observed.events + 1] = listener end},
-        ['bee.filesystem'] = {path = path, current_path = function() return path(root .. '/script') end,
-            absolute = function(value)
-                observed.absolute_calls = (observed.absolute_calls or 0) + 1
-                return value:is_absolute() and value or path(root .. '/script/' .. value:string())
-            end,
-            is_regular_file = function(value) return observed.sources[value:string()] == true end,
-            exists = function(value)
-                if observed.path_failure then error('path validation fixture failure') end
-                local name = value:string()
-                return observed.sources[name] or name == observed.existing
-            end,
-            is_directory = function(value) return value:string() ~= observed.missing_parent end},
+        ['bee.filesystem'] = {path = path, current_path = function() return path(root .. '/script') end},
     }
     local environment = setmetatable({window = window, arg = {[0] = root .. '/bin/w3x2lni-lua.exe'},
         require = function(name) return assert(dependencies[name], 'Unmocked action dependency: ' .. name) end},
         {__index = _G})
-    dependencies['gui.archive_input'] = assert(loadfile(root .. '/script/gui/archive_input.lua', 't', environment))()
     local convert = assert(loadfile(root .. '/script/gui/new/page/convert.lua', 't', environment))()
     local conversion_template, conversion_data = captured[1], captured_data[1]
-    local function handler(template, title)
-        if template.title == title and template.on and template.on.click then return template.on.click end
-        for _, child in ipairs(template) do
-            local found = handler(child, title)
-            if found then return found end
-        end
-    end
     local function identified(template, id)
         if template.id == id then return template end
         for _, child in ipairs(template) do
@@ -645,146 +860,104 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
             if found then return found end
         end
     end
-    local output_template = assert(identified(conversion_template, 'output_path'))
-    equal(output_template.bind.text, 'output.text', 'The real field must bind to the submitted output')
-    assert(output_template.on and type(output_template.on.tab) == 'function')
-    output_template.on.tab(nil, {modifiers = 0})
-    equal(observed.focus, 'start', 'Tab from the output path must focus Start')
-    output_template.on.tab(nil, {modifiers = app.gui.Event.maskshift})
-    equal(observed.focus, 'filename', 'Shift+Tab from the output path must focus the preceding control')
-    local start = assert(handler(conversion_template, labels.START))
+    local function visit(template, callback)
+        callback(template)
+        for _, child in ipairs(template) do visit(child, callback) end
+    end
+    assert(not identified(conversion_template, 'output_path'), 'Conversion must not retain the retired archive output Entry')
+    visit(conversion_template, function(control)
+        assert(control.class ~= 'entry', 'Ordinary conversion pages must have no archive destination input')
+        assert(control.text ~= rawget(labels, 'OPTIMIZE_SAVE') or control.text == nil,
+            'An archive-only label must never appear in SLK/LNI/OBJ')
+    end)
+    local start_template = assert(identified(conversion_template, 'start'))
+    local change_format_template = assert(identified(conversion_template, 'change_format'))
+    equal(start_template.bind.enabled, 'actions.enabled', 'Start must expose native busy-state availability')
+    equal(start_template.bind.title, 'actions.start_text', 'Start must expose localized processing status')
+    equal(change_format_template.bind.enabled, 'actions.enabled', 'Format change must expose native busy-state availability')
+    local start = start_template.on.click
+    local change_format = change_format_template.on.click
+    assert(type(start) == 'function' and type(change_format) == 'function')
     assert(loadfile(root .. '/script/gui/new/page/select.lua', 't', environment))()
     local select_template = captured[2]
-    local analyze = assert(handler(select_template, labels.ANALYZE_MAP))
-    local optimize = assert(handler(select_template, labels.OPTIMIZE_MAP))
-    local to_lni = assert(handler(select_template, labels.CONVERT_TO .. 'Lni'))
-    assert(rawget(labels, 'OPTIMIZE_PACKED_INPUT'), locale .. ' is missing the packed-input explanation')
-    local original_input = window._filename
-    for _, example in ipairs {
-        {name = root .. '/_NarutoRPGPlus1.131testv2_editor3'},
-        {name = root .. '/Exported folder.w3x'},
-        {name = root .. '/Exported folder/.w3x', regular = true},
-        {name = root .. '/Missing input.w3x'},
-        {name = root .. '/README.txt', regular = true},
-    } do
-        local input = path(example.name)
-        observed.sources[example.name] = example.regular == true or nil
-        window._filename, window._mode, window.page = input, 'analyze', 'select'
-        window._color = '#735FC1'
-        local opens, loops, errors = #observed.opens, observed.loops, #observed.errors
-        local absolute_calls = observed.absolute_calls or 0
-        optimize()
-        equal(window._filename, input, 'Refusing Optimize must preserve the selected input')
-        equal(window._mode, 'analyze', 'Refusing Optimize must not change the selected action')
-        equal(window.page, 'select', 'Refusing Optimize must remain on the selection page')
-        equal(window._color, '#735FC1', 'Refusing Optimize must not change the theme')
-        equal(#observed.errors, errors + 1)
-        equal(observed.errors[#observed.errors][3], labels.OPTIMIZE_PACKED_INPUT)
-        equal(#observed.opens, opens, 'Refusing Optimize must not launch a worker')
-        equal(observed.loops, loops, 'Refusing Optimize must not schedule worker polling')
-
-        -- A forced/stale Optimize page must still reject the source before
-        -- interpreting its output entry or generating a misleading default.
-        window._mode, window.page = 'optimize', 'convert'
-        conversion_data.output.text = ''
+    local expected_bindings = {
+        lni = {'config.lni.read_slk', 'config.lni.export_lua', 'config.lni.extra_check'},
+        obj = {'config.obj.read_slk', 'config.obj.extra_check'},
+        slk = {'config.slk.remove_unuse_object', 'config.slk.optimize_jass', 'config.slk.mdx_squf',
+            'config.slk.remove_we_only', 'config.slk.slk_doodad', 'config.slk.confused', 'config.slk.extra_check'},
+    }
+    local actions = {}
+    visit(select_template, function(control)
+        if control.on and control.on.click then actions[#actions + 1] = control end
+    end)
+    equal(#actions, 3, 'Only the three conversion actions must remain available')
+    local source = window._filename
+    for _, mode in ipairs {'lni', 'slk', 'obj'} do
+        local choice = assert(identified(select_template, 'to_' .. mode))
+        choice.on.click()
         convert:on_show()
-        assert(not conversion_data.output.visible, 'Unsupported inputs must hide the output field')
-        equal(conversion_data.message, labels.OPTIMIZE_PACKED_INPUT)
-        equal(conversion_data.output.text, '', 'Unsupported input received a malformed output default')
-        equal(observed.absolute_calls or 0, absolute_calls, 'Unsupported input must not construct an output path')
+        equal(window._mode, mode); equal(window.page, 'convert')
+        equal(window._filename, source, 'Changing format must preserve the selected map')
+        equal(conversion_data.filename, source:filename():string())
+        assert(conversion_data.output == nil, 'Retired output state must not survive on ordinary conversion pages')
+        local settings = assert(observed.settings[#observed.settings])
+        equal(settings.binding.proxy.config, configuration, 'Option bindings must preserve the original configuration object')
+        local bound = {}
+        visit(settings.template, function(control)
+            if control.bind and control.bind.value then
+                bound[control.bind.value] = true
+                equal(control.bind.enabled, 'enabled', 'Conversion options must disable while processing')
+            end
+        end)
+        for _, binding in ipairs(expected_bindings[mode]) do
+            assert(bound[binding], 'Existing conversion option was lost: ' .. binding)
+            bound[binding] = nil
+        end
+        assert(next(bound) == nil, 'Unexpected conversion option was added')
+        assert(settings.view.visible, 'Selected format options must be visible')
         start()
-        equal(#observed.opens, opens, 'A forced Optimize page must reject unsupported inputs before spawning')
-        equal(observed.loops, loops)
-        equal(#observed.errors, errors + 2)
-        equal(observed.errors[#observed.errors][3], labels.OPTIMIZE_PACKED_INPUT,
-            'Input refusal must take priority over the empty output path')
-        equal(conversion_data.output.text, '')
-        equal(window._filename, input)
+        equal(observed.opens[#observed.opens][1], mode)
+        equal(observed.opens[#observed.opens][2], source:string())
+        equal(#observed.opens[#observed.opens], 2, 'Ordinary conversion must keep its original default output routing')
+    end
+    equal(#observed.opens, 3); equal(observed.loops, 3)
+    assert(configuration.lni.read_slk and not configuration.lni.export_lua and not configuration.lni.extra_check)
+    assert(configuration.slk.remove_unuse_object and configuration.slk.remove_we_only and not configuration.slk.optimize_jass)
+    print('PASS ' .. locale .. ' retired archive controls absent; LNI/OBJ/SLK routing and existing options retained')
 
-        -- The guard belongs only to archive optimization. The existing
-        -- Analyze and conversion choices remain available for LNI projects.
-        analyze()
-        convert:on_show()
-        equal(window._mode, 'analyze'); equal(window.page, 'convert')
-        assert(not conversion_data.output.visible)
-        equal(conversion_data.message, labels.ANALYZE_HINT)
-        to_lni()
-        convert:on_show()
-        equal(window._mode, 'lni'); equal(window.page, 'convert')
-        equal(window._filename, input, 'The Optimize refusal must not lose the source for other actions')
-        equal(#observed.opens, opens); equal(observed.loops, loops)
-        assert(not app.loop_quit, 'Unsupported inputs must not close the application')
-    end
-    window._filename = original_input
-    print('PASS ' .. locale .. ' dotted/LNI folders, marker, missing/non-map input refused before Optimize navigation, defaults or workers')
-    analyze()
+    -- Read-only report visits and repeated on_show must preserve diagnostics.
+    backend.message = 'Existing conversion report'
+    backend.lastword = {type = 'warning', content = 'Existing compatibility warning'}
+    conversion_data.message = backend.message
     convert:on_show()
-    equal(window._mode, 'analyze'); equal(window.page, 'convert')
-    assert(not conversion_data.output.visible, 'Analyze must hide the output field')
-    start()
-    equal(#observed.opens, 1)
-    equal(observed.opens[1][1], 'analyze'); equal(#observed.opens[1], 2)
-    equal(observed.opens[1][2], window._filename:string())
-    assert(handler(select_template, labels.OPTIMIZE_MAP))()
-    convert:on_show()
-    equal(window._mode, 'optimize')
-    assert(conversion_data.output.visible)
-    equal(conversion_data.output.text, root .. '/Maps with spaces/input.optimized.w3x')
-
-    local function reject(destination, message)
-        local opens, errors, loops = #observed.opens, #observed.errors, observed.loops
-        conversion_data.output.text = destination
-        start()
-        equal(#observed.opens, opens, 'Rejected output must not launch a worker')
-        equal(observed.loops, loops, 'Rejected output must not schedule worker polling')
-        equal(#observed.errors, errors + 1)
-        equal(observed.errors[#observed.errors][3], message)
-        equal(conversion_data.output.text, destination, 'Invalid output must stay editable')
-        assert(not app.loop_quit, 'Output validation must not close the application')
-    end
-    reject(window._filename:string(), labels.OPTIMIZE_NEW_PATH)
-    observed.existing = root .. '/Maps with spaces/Existing optimized.w3x'
-    reject(observed.existing, labels.OPTIMIZE_NEW_PATH)
-    for _, invalid in ipairs {'', '   ', 'relative.w3x', 'C:relative.w3x', root .. '/bad.txt',
-        root .. '/bad.w3x\nextra', root .. '/bad\0.w3x', root .. '/bad\r.w3m',
-        root .. '/bad\tpath.w3x', root .. '/bad\1path.w3x',
-        '"' .. root .. '/Maps with spaces/input.w3x', root .. '/No extension'} do
-        reject(invalid, labels.OPTIMIZE_INVALID_PATH)
-    end
-    observed.missing_parent = root .. '/Missing parent'
-    reject(observed.missing_parent .. '/new.w3x', labels.OPTIMIZE_PARENT_PATH)
-    observed.missing_parent = nil
-    local destination = root .. '/Maps with spaces/优化 hráč 😀.W3M'
-    conversion_data.output.text = '  "' .. destination .. '"  '
-    start()
-    equal(#observed.opens, 2)
-    equal(observed.opens[2][1], 'optimize')
-    equal(observed.opens[2][2], window._filename:string())
-    equal(observed.opens[2][3], destination, 'Unicode Copy As Path text must route the chosen destination')
+    equal(conversion_data.message, backend.message)
+    assert(conversion_data.report.visible, 'Returning from a report must keep its report action visible')
     worker.exited = false
+    convert:on_show()
+    assert(not conversion_data.actions.enabled, 'Busy conversion actions must disable')
+    equal(conversion_data.actions.start_text, labels.PROCESSING)
+    assert(not observed.settings[#observed.settings].binding.proxy.enabled, 'Busy conversion settings must disable')
+    local opens_before_busy, loops_before_busy = #observed.opens, observed.loops
     start()
-    equal(#observed.opens, 2, 'A running operation must not start a second worker')
-    equal(observed.loops, 2)
-    local input_before_drop = window._filename
+    equal(#observed.opens, opens_before_busy, 'A running conversion must not start a second worker')
+    equal(observed.loops, loops_before_busy)
+    window.page = 'convert'
+    change_format()
+    equal(window.page, 'convert', 'A running conversion must not change formats')
     app.ext.on_dropfile(root .. '/Never read this busy dropped map.w3x')
-    equal(window._filename, input_before_drop, 'A running operation must reject map drops')
-    assert(handler(conversion_template, labels.CANCEL_OPERATION))()
-    equal(observed.cancels, 1, 'Cancel must request cooperative worker cleanup')
+    equal(window._filename, source, 'A running conversion must reject map drops')
 
     worker.exited = true
-    conversion_data.output.text = destination
-    observed.path_failure = true
-    start()
-    observed.path_failure = false
-    equal(#observed.opens, 2, 'A filesystem validation error must not launch a worker')
-    assert(backend.report_text:find('path validation fixture failure', 1, true))
-    assert(conversion_data.report.visible and conversion_data.report.color == '#C33')
-    assert(not conversion_data.cancel.visible and not conversion_data.progress.visible)
+    change_format()
+    equal(window.page, 'select', 'Idle conversion must allow choosing another format')
+    equal(window._filename, source)
+    window.page = 'convert'
     observed.spawn_failure = true
     start()
-    equal(#observed.opens, 2)
+    equal(#observed.opens, opens_before_busy)
     assert(backend.report_text:find('native spawn failed', 1, true))
     assert(conversion_data.report.visible and not conversion_data.progress.visible)
+    equal(conversion_data.report.color, palette.error, 'Failure reports must use the readable error surface')
     observed.spawn_failure = false
     start()
     assert(backend.report_text == nil, 'A successful retry must clear previous diagnostics')
@@ -798,74 +971,39 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     observed.recovery_setup_failure = false
     observed.timers[#observed.timers]({remove = function() removed = true end})
     assert(not removed and backend.report_text:find('timer fixture failure', 1, true))
-    assert(conversion_data.report.visible and conversion_data.cancel.visible,
-        'A timer failure must keep Report and cooperative cancellation accessible')
-    equal(observed.recoveries, 1); equal(observed.cancels, 2)
+    assert(conversion_data.report.visible, 'A timer failure must keep the diagnostic report accessible')
+    equal(observed.recoveries, 1); equal(observed.cancels, 1)
     local opens_before_retry = #observed.opens
     start()
     equal(#observed.opens, opens_before_retry, 'Recovery must not start a concurrent worker')
+    change_format()
+    equal(window.page, 'convert', 'Recovery must not permit a concurrent format change')
     observed.timers[#observed.timers]({remove = function() removed = true end})
     assert(not removed and not worker.exited, 'Recovery must continue polling until the worker finishes')
     observed.recovery_completed = true
     observed.timers[#observed.timers]({remove = function() removed = true end})
-    assert(removed and worker.exited and not conversion_data.cancel.visible)
+    assert(removed and worker.exited)
+    assert(conversion_data.actions.enabled, 'Finished recovery must enable conversion actions')
+    equal(conversion_data.actions.start_text, labels.START)
+    assert(observed.settings[#observed.settings].binding.proxy.enabled, 'Finished recovery must enable settings')
     start()
     equal(#observed.opens, opens_before_retry + 1, 'A completed recovery must permit a fresh retry')
     assert(backend.report_text == nil, 'Retry must clear the previous failure report')
     assert(not app.loop_quit, 'A startup or update error must not close the application')
-    print('PASS ' .. locale .. ' editable Optimize routing, invalid/existing output rejection and cancellation')
-    print('PASS ' .. locale .. ' output validation/spawn errors, recovery polling and safe retry reports')
-
-    -- Back from a report preserves edits for the same input; a newly selected
-    -- packed source receives its own default; folders/markers stay analysis-only.
-    local edited = root .. '/User edits preserved.w3x'
-    conversion_data.output.text = edited
-    convert:on_show()
-    equal(conversion_data.output.text, edited, 'Back must retain the chosen output')
-    window._mode = 'analyze'; convert:on_show()
-    assert(not conversion_data.output.visible)
-    window._mode = 'optimize'; convert:on_show()
-    equal(conversion_data.output.text, edited, 'Analyze/Optimize toggling must retain edits for the same source')
-    window._filename = path(root .. '/地图 hráč/Legacy map.w3m')
-    observed.sources[window._filename:string()] = true
-    convert:on_show()
-    assert(conversion_data.output.visible)
-    equal(conversion_data.output.text, root .. '/地图 hráč/Legacy map.optimized.w3m')
-    window._filename = path(root .. '/_NarutoRPGPlus1.131testv2_editor.W3X')
-    observed.sources[window._filename:string()] = true
-    optimize()
-    convert:on_show()
-    equal(window._mode, 'optimize'); equal(window.page, 'convert')
-    assert(conversion_data.output.visible, 'Regular uppercase .W3X inputs must allow archive optimization')
-    equal(conversion_data.output.text, root .. '/_NarutoRPGPlus1.131testv2_editor.optimized.W3X',
-        'A packed input must append optimized before the final game-map extension')
-    window._filename = path(root .. '/LNI folder')
-    local before_folder = conversion_data.output.text
-    convert:on_show()
-    assert(not conversion_data.output.visible)
-    equal(conversion_data.message, labels.OPTIMIZE_PACKED_INPUT)
-    equal(conversion_data.output.text, before_folder, 'LNI folders must not generate an archive output')
-    window._filename = path('Relative map.w3x')
-    observed.sources[window._filename:string()] = true
-    convert:on_show()
-    assert(conversion_data.output.visible)
-    equal(conversion_data.output.text, root .. '/script/Relative map.optimized.w3x')
-    window._filename = input_before_drop
-    convert:on_show()
-    equal(conversion_data.output.text, root .. '/Maps with spaces/input.optimized.w3x')
-    print('PASS ' .. locale .. ' output path visibility, defaults and edit persistence across report navigation')
+    print('PASS ' .. locale .. ' existing reports, spawn/update failures, recovery polling and safe retry')
 
     local opens_before_close, errors_before_close = #observed.opens, #observed.errors
     local closing_cancelled = false
     window._worker = {exited = false, cancel_file = true, cancel = function() closing_cancelled = true end}
     app.windows[1]:close()
     assert(window._closing and app.loop_quit and closing_cancelled)
-    start()
+    start(); change_format()
     app.ext.on_dropfile(root .. '/Never read this closing map.w3x')
     equal(#observed.opens, opens_before_close, 'Closing application must not launch a worker')
     equal(#observed.errors, errors_before_close, 'Closing application must not touch validation UI')
-    equal(window._filename, input_before_drop, 'Closing map drop changed the selected input')
-    print('PASS ' .. locale .. ' running/closing Start and map-drop guards preserve source selection')
+    equal(window.page, 'convert', 'Closing application must not navigate formats')
+    equal(window._filename, source, 'Closing map drop changed the selected input')
+    print('PASS ' .. locale .. ' running/closing Start, format-change and map-drop guards preserve source selection')
 end
 
 

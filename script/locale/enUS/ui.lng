@@ -39,9 +39,9 @@ Remove unreferenced objects
 [OPTIMIZE_JASS]
 Optimize JASS
 [OPTIMIZE_JASS_HINT]
-Reduce size and lifting performance
+Reduce JASS script size and improve execution performance.
 [MDX_SQUF]
-Compress mdx
+Compress MDX models
 [MDX_SQUF_HINT]
 Lossy compression
 [REMOVE_WE_ONLY]
@@ -67,7 +67,7 @@ Rename variables and functions
 [EXTRA_CHECK]
 Extra check
 [EXTRA_CHECK_HINT]
-check the rationality of data
+Check map data for consistency.
 [REPORT]
 Report
 [PROCESSING]
@@ -87,35 +87,23 @@ Ctrl+A: select all   Ctrl+C: copy selection
 [MAINTAINER]
 Maintainer:
 
-[ANALYZE_MAP]
-Analyze map
+[CHOOSE_FORMAT]
+Choose conversion format
 
-[OPTIMIZE_MAP]
-Optimize archive
+[LNI_DESCRIPTION]
+Editable project folder for version control.
 
-[ANALYZE_HINT]
-Inspect sizes, archive preservation and JASS verification.
+[OBJ_DESCRIPTION]
+Pack a map with standard object data.
 
-[OPTIMIZE_HINT]
-Lossless archive optimization; review the output path, then Start.
+[SLK_DESCRIPTION]
+Convert object data to SLK using the selected options.
 
-[OPTIMIZE_SAVE]
-Save optimized map to a new file
+[CONVERSION_OPTIONS]
+Conversion options
 
-[OPTIMIZE_NEW_PATH]
-Choose a new filename. Existing files are never overwritten.
+[CHANGE_FORMAT]
+Change format
 
-[CANCEL_OPERATION]
-Cancel operation
-
-[CANCELLING]
-Cancelling; waiting for safe cleanup...
-
-[OPTIMIZE_INVALID_PATH]
-Enter a full path ending in .w3x or .w3m, on one line.
-
-[OPTIMIZE_PARENT_PATH]
-The output folder must already exist.
-
-[OPTIMIZE_PACKED_INPUT]
-Optimize requires a packed .w3x or .w3m map file. Drag the map file into the app. Use Analyze map for LNI folders.
+[DRAG_MAP_HINT]
+Drop a .w3x, .w3m, or LNI project folder here.

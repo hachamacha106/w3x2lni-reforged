@@ -202,8 +202,3 @@
 数据文件版本不兼容，请使用 mpq 命令重新提取
 [INVALID_CONFIG]
 无效的配置
-[HELP_ANALYZE]
-analyze <map.w3x> — 分析文件大小、导入和 pjass 检查报告
-
-[HELP_OPTIMIZE]
-optimize <input.w3x> <new-output.w3x> — 经验证的无损压缩包优化

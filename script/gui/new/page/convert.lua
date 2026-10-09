@@ -8,7 +8,7 @@ local ui = require 'gui.new.template'
 local databinding = require 'gui.new.databinding'
 local ev = require 'gui.event'
 local fs = require 'bee.filesystem'
-local archive_input = require 'gui.archive_input'
+local theme = require 'gui.new.theme'
 
 local root = fs.current_path()
 local worker
@@ -17,7 +17,7 @@ local recovery_error
 local view
 local data
 local element
-local output_input
+local configData
 
 local function getexe()
     local i = 0
@@ -28,10 +28,12 @@ local function getexe()
 end
 
 local function update_show()
+    local busy = window._closing or worker and not worker.exited
+    data.actions.enabled = not busy
+    data.actions.start_text = busy and lang.ui.PROCESSING or lang.ui.START
+    if configData then configData.proxy.enabled = not busy end
     data.report.visible = not not backend.lastword
     data.progress.visible = (not not worker) and not data.report.visible
-    data.cancel.visible = worker and not worker.exited and (recovering or not backend.lastword)
-        and (window._mode == 'analyze' or window._mode == 'optimize') or false
 end
 
 local function update_result()
@@ -39,9 +41,9 @@ local function update_result()
     if backend.lastword then
         data.report.text = backend.lastword.content
         if backend.lastword.type == 'failed' or backend.lastword.type == 'error' then
-            data.report.color = '#C33'
+            data.report.color = theme.error
         elseif backend.lastword.type == 'warning' then
-            data.report.color = '#FC3'
+            data.report.color = theme.warning
         else
             data.report.color = window._color
         end
@@ -90,48 +92,39 @@ local function delayedtask(t)
 end
 
 local template = ui.container {
-    style = { FlexGrow = 1, Padding = 4 },
-    font = { size = 18 },
+    style = { FlexGrow = 1, Padding = 16 },
+    font = { name = 'Segoe UI', size = 14 },
     -- upper
     ui.container {
         id = 'config',
         style = { FlexGrow = 1, JustifyContent = 'flex-start' },
-        -- filename
-        ui.button {
-            id = 'filename',
-            style = { Height = 36, MarginTop = 4, MarginBottom = 16 },
-            bind = {
-                title = 'filename',
-                color = 'theme'
+        ui.container {
+            color = theme.surface,
+            style = { Height = 48, Padding = 10, MarginBottom = 16, FlexShrink = 0 },
+            ui.label {
+                id = 'filename',
+                align = 'start',
+                style = { FlexGrow = 1 },
+                bind = { text = 'filename' },
             },
         },
-        ui.container {
-            style = { MarginBottom = 12 },
-            bind = { visible = 'output.visible' },
-            ui.label {
-                text = lang.ui.OPTIMIZE_SAVE,
-                align = 'start',
-                style = { Height = 24, MarginBottom = 4 },
-            },
-            ui.entry {
-                id = 'output_path',
-                style = { Height = 34 },
-                font = { size = 14 },
-                bind = { text = 'output.text' },
-                on = { tab = function(_, event)
-                    if event.modifiers & gui.Event.maskshift ~= 0 then element.filename:focus()
-                    else element.start:focus() end
-                end },
-            },
-        }
+        ui.label {
+            id = 'options_heading',
+            text = lang.ui.CONVERSION_OPTIONS,
+            align = 'start',
+            style = { Height = 32, MarginBottom = 8 },
+            font = { name = 'Segoe UI', size = 17, weight = 'bold' },
+        },
     },
     -- lower
     ui.container {
-        style = { FlexGrow = 1, JustifyContent = 'flex-end' },
+        style = { FlexShrink = 0, JustifyContent = 'flex-end' },
         -- message
         ui.label {
-            style = { Height = 20, MarginBottom = 8 },
-            text_color = '#CCC',
+            id = 'status_message',
+            style = { Height = 44, MarginBottom = 8 },
+            text_color = theme.muted,
+            font = { name = 'Segoe UI', size = 13 },
             align = 'start',
             bind = {
                 text = 'message',
@@ -139,7 +132,7 @@ local template = ui.container {
         },
         -- progress
         ui.progress {
-            style = { Height = 30, MarginBottom = 8, FlexDirection = 'row' },
+            style = { Height = 12, MarginBottom = 12, FlexDirection = 'row' },
             bind = {
                 value = 'progress.value',
                 visible = 'progress.visible',
@@ -148,7 +141,7 @@ local template = ui.container {
         },
         -- report
         ui.button {
-            style = { Height = 30, MarginBottom = 8 },
+            style = { Height = 40, MarginBottom = 12 },
             bind = {
                 title = 'report.text',
                 color = 'report.color',
@@ -160,84 +153,56 @@ local template = ui.container {
                 end
             },
         },
-        ui.button {
-            title = lang.ui.CANCEL_OPERATION,
-            style = { Height = 30, MarginBottom = 8 },
-            bind = { visible = 'cancel.visible' },
-            on = { click = function()
-                if worker and not worker.exited and worker.cancel then
-                    local ok, err = worker:cancel()
-                    if ok then data.message = lang.ui.CANCELLING
-                    else messagebox(lang.ui.ERROR, '%s', tostring(err)) end
-                end
-            end },
-        },
-        -- start
-        ui.button {
-            id = 'start',
-            title = lang.ui.START,
-            style = { Height = 50 },
-            bind = {
-                color = 'theme'
+        ui.container {
+            style = { Height = 44, FlexDirection = 'row', FlexShrink = 0 },
+            ui.button {
+                id = 'change_format',
+                title = lang.ui.CHANGE_FORMAT,
+                color = theme.raised,
+                style = { Width = 160, MarginRight = 12 },
+                bind = { enabled = 'actions.enabled' },
+                on = { click = function()
+                    if window._closing or worker and not worker.exited then return end
+                    window:show_page 'select'
+                end },
             },
-            on = {
-                click = function ()
-                    local ok, err = xpcall(function()
-                        if window._closing or worker and not worker.exited then
-                            return
+            -- start
+            ui.button {
+                id = 'start',
+                style = { FlexGrow = 1 },
+                bind = {
+                    title = 'actions.start_text',
+                    enabled = 'actions.enabled',
+                    color = 'theme'
+                },
+                on = {
+                    click = function ()
+                        local ok, err = xpcall(function()
+                            if window._closing or worker and not worker.exited then
+                                return
+                            end
+                            local arguments = {window._mode, window._filename:string()}
+                            recovering, recovery_error = false, nil
+                            backend:init(getexe(), fs.current_path())
+                            local open_error
+                            worker, open_error = backend:open('backend\\init.lua', arguments)
+                            if not worker then error(open_error or 'The worker process could not be started.', 0) end
+                            backend.message = lang.ui.INIT
+                            backend.progress = 0
+                            data.progress.value = backend.progress / 100
+                            data.progress.visible = true
+                            data.report.visible = false
+                            timer.loop(100, delayedtask)
+                            window._worker = worker
+                            update_show()
+                        end, debug.traceback)
+                        if not ok and not window._closing then
+                            backend:clean()
+                            backend:failure(err)
+                            update_result()
                         end
-                        local arguments = {window._mode, window._filename:string()}
-                        if window._mode == 'optimize' then
-                            if not archive_input.packed(window._filename) then
-                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_PACKED_INPUT)
-                                return
-                            end
-                            -- Choosing an output must not depend on the retained
-                            -- runtime's failing native file-picker implementation.
-                            local text = data.output.text:match('^%s*(.-)%s*$')
-                            if text:sub(1, 1) == '"' and text:sub(-1) == '"' then
-                                text = text:sub(2, -2)
-                            end
-                            if text == '' or data.output.text:find('%c') then
-                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_INVALID_PATH)
-                                return
-                            end
-                            local destination = fs.path(text)
-                            local extension = destination:extension():string():lower()
-                            if not destination:is_absolute() or (extension ~= '.w3x' and extension ~= '.w3m') then
-                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_INVALID_PATH)
-                                return
-                            end
-                            if fs.exists(destination) then
-                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_NEW_PATH)
-                                return
-                            end
-                            if not fs.is_directory(destination:parent_path()) then
-                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_PARENT_PATH)
-                                return
-                            end
-                            arguments[3] = destination:string()
-                        end
-                        recovering, recovery_error = false, nil
-                        backend:init(getexe(), fs.current_path())
-                        local open_error
-                        worker, open_error = backend:open('backend\\init.lua', arguments)
-                        if not worker then error(open_error or 'The worker process could not be started.', 0) end
-                        backend.message = lang.ui.INIT
-                        backend.progress = 0
-                        data.progress.value = backend.progress / 100
-                        data.progress.visible = true
-                        data.report.visible = false
-                        data.cancel.visible = window._mode == 'analyze' or window._mode == 'optimize'
-                        timer.loop(100, delayedtask)
-                        window._worker = worker
-                    end, debug.traceback)
-                    if not ok and not window._closing then
-                        backend:clean()
-                        backend:failure(err)
-                        update_result()
-                    end
-                end,
+                    end,
+                },
             },
         },
     },
@@ -247,13 +212,12 @@ view, data, element = ui.create(template, {
     filename = '',
     message  = '',
     theme = window._color,
-    output = { text = '', visible = false },
+    actions = { enabled = true, start_text = lang.ui.START },
     report   = {
         text  = '',
         color = window._color,
         visible = false
     },
-    cancel = { visible = false },
     progress = {
         value = 0,
         visible = false
@@ -263,18 +227,6 @@ view, data, element = ui.create(template, {
 function view:on_show()
     update_show()
     data.filename = window._filename:filename():string()
-    data.output.visible = window._mode == 'optimize' and archive_input.packed(window._filename)
-    if data.output.visible and output_input ~= window._filename:string() then
-        local input = fs.absolute(window._filename)
-        local extension = input:extension():string()
-        data.output.text = (input:parent_path() / (input:stem():string() .. '.optimized' .. extension)):string()
-        output_input = window._filename:string()
-    end
-    if window._mode == 'analyze' then
-        data.message = lang.ui.ANALYZE_HINT
-    elseif window._mode == 'optimize' then
-        data.message = data.output.visible and lang.ui.OPTIMIZE_HINT or lang.ui.OPTIMIZE_PACKED_INPUT
-    end
 end
 
 local function checkbox(t)
@@ -282,17 +234,19 @@ local function checkbox(t)
         mouseenter = 'update_tip(self.tip)',
         mouseleave = 'update_tip()'
     }
-    t.style = { MarginTop = 4, MarginBottom = 4 }
+    t.style = { Height = 30, MarginTop = 2, MarginBottom = 2 }
     if t.bind then
-        t.bind.color = 'theme'
+        t.bind.enabled = 'enabled'
     else
-        t.bind = { color = 'theme' }
+        t.bind = { enabled = 'enabled' }
     end
     return ui.checkbox(t)
 end
 
-local configData = databinding {
+configData = databinding {
     theme = window._color,
+    panel = theme.surface,
+    enabled = true,
     config = config,
     update_tip = function(tip)
         if worker and not worker.exited then
@@ -308,7 +262,7 @@ local configData = databinding {
 
 local function lni()
     local template = ui.container {
-        font = { size = 18 },
+        font = { name = 'Segoe UI', size = 14 },
         checkbox {
             text = lang.ui.READ_SLK,
             tip = lang.ui.READ_SLK_HINT,
@@ -320,7 +274,7 @@ local function lni()
             text = lang.ui.ADVANCED,
             style = { MarginTop = 4, MarginBottom = 4 },
             bind = {
-                color = 'theme'
+                color = 'panel'
             },
             checkbox {
                 text = lang.ui.EXPORT_LUA,
@@ -343,7 +297,7 @@ end
 
 local function slk()
     local template = ui.container {
-        font = { size = 18 },
+        font = { name = 'Segoe UI', size = 14 },
         checkbox {
             text = lang.ui.REMOVE_UNUSED_OBJECT,
             tip = lang.ui.REMOVE_UNUSED_OBJECT_HINT,
@@ -376,7 +330,7 @@ local function slk()
             text = lang.ui.ADVANCED,
             style = { MarginTop = 4, MarginBottom = 4 },
             bind = {
-                color = 'theme'
+                color = 'panel'
             },
             checkbox {
                 text = lang.ui.SLK_DOODAD,
@@ -406,7 +360,7 @@ end
 
 local function obj()
     local template = ui.container {
-        font = { size = 18 },
+        font = { name = 'Segoe UI', size = 14 },
         checkbox {
             text = lang.ui.READ_SLK,
             tip = lang.ui.READ_SLK_HINT,
@@ -418,7 +372,7 @@ local function obj()
             text = lang.ui.ADVANCED,
             style = { MarginTop = 4, MarginBottom = 4 },
             bind = {
-                color = 'theme'
+                color = 'panel'
             },
             checkbox {
                 text = lang.ui.EXTRA_CHECK,
@@ -444,15 +398,16 @@ ev.on('update theme', function(color, title)
     data.report.color = color
     backend.lastword = nil
     data.message = ''
-    data.cancel.visible = false
     worker = nil
     recovering, recovery_error = false, nil
+    update_show()
 
     configData.proxy.theme = color
 
     if current_page then
         current_page:setvisible(false)
     end
+    if title ~= 'W3x2Lni' and title ~= 'W3x2Slk' and title ~= 'W3x2Obj' and title ~= 'War3Dump' then return end
     if not pages[title] then
         if title == 'W3x2Lni' then
             pages[title] = lni()
@@ -460,7 +415,7 @@ ev.on('update theme', function(color, title)
             pages[title] = slk()
         elseif title == 'W3x2Obj' then
             pages[title] = obj()
-        elseif title == 'War3Dump' or title == 'Analyze' or title == 'Optimize' then
+        elseif title == 'War3Dump' then
             pages[title] = mpq()
         end
         element.config:addchildview(pages[title])

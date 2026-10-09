@@ -203,8 +203,3 @@ Copied id [%s] conflict: skill [%s][%s] code [%s][%s]
 Incompatible data files, please re-extracting MPQ data by `mpq` command
 [INVALID_CONFIG]
 Invalid config
-[HELP_ANALYZE]
-analyze <map.w3x> — inspect map size, imports and report-only pjass checks
-
-[HELP_OPTIMIZE]
-optimize <input.w3x> <new-output.w3x> — verified lossless archive optimization

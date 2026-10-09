@@ -86,35 +86,23 @@
 Ctrl+A：全选   Ctrl+C：复制所选文本
 [MAINTAINER]
 维护者：
-[ANALYZE_MAP]
-分析地图
+[CHOOSE_FORMAT]
+选择转换格式
 
-[OPTIMIZE_MAP]
-优化压缩包
+[LNI_DESCRIPTION]
+导出可编辑的项目文件夹，便于版本管理。
 
-[ANALYZE_HINT]
-检查文件大小、地图数据保留和 JASS 验证。
+[OBJ_DESCRIPTION]
+打包使用标准物体数据的地图。
 
-[OPTIMIZE_HINT]
-无损优化地图归档；确认输出路径后点击开始。
+[SLK_DESCRIPTION]
+根据所选选项将物体数据转换为 SLK。
 
-[OPTIMIZE_SAVE]
-将优化后的地图保存到新文件
+[CONVERSION_OPTIONS]
+转换选项
 
-[OPTIMIZE_NEW_PATH]
-请选择新文件名。不会覆盖现有文件。
+[CHANGE_FORMAT]
+更改格式
 
-[CANCEL_OPERATION]
-取消操作
-
-[CANCELLING]
-正在取消，等待安全清理...
-
-[OPTIMIZE_INVALID_PATH]
-请输入以 .w3x 或 .w3m 结尾的完整路径，且不要换行。
-
-[OPTIMIZE_PARENT_PATH]
-输出文件夹必须已存在。
-
-[OPTIMIZE_PACKED_INPUT]
-优化需要已打包的 .w3x 或 .w3m 地图文件。请将地图文件拖入应用；LNI 文件夹可使用“分析地图”。
+[DRAG_MAP_HINT]
+将 .w3x、.w3m 地图或 LNI 项目文件夹拖到此处。

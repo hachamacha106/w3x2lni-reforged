@@ -177,8 +177,12 @@ def validate_windows_report(path, archive_hash, expected_version=None, expected_
         assert set(live.get('constants_queried', [])) == {
             'SFileMpqNumberOfFiles', 'SFileMpqFlags', 'SFileInfoLocale', 'SFileInfoFileIndex',
             'SFileInfoByteOffset', 'SFileInfoFileTime', 'SFileInfoFileSize', 'SFileInfoCompressedSize', 'SFileInfoFlags'}
+        assert report.get('public_archive_actions_removed') is True, 'Missing public archive action retirement checks'
+        assert all('script/backend/cli/' + action + '.lua' not in expected_files
+                   for action in ('analyze', 'optimize')), 'Retired archive commands are still packaged as public actions'
         gui = report.get('gui_archive_actions', {})
-        assert gui.get('status') == 'passed' and gui.get('headless') is True, 'Missing native GUI archive adapter/worker evidence'
+        assert gui.get('status') == 'passed' and gui.get('headless') is True, 'Missing native conversion/private worker evidence'
+        assert gui.get('internal_regression_only') is True, 'Retired archive checks must be labeled private regressions'
         assert gui.get('interactive_dialog_tested') is False, 'Headless checks cannot claim interactive dialog testing'
         native_dialog = gui.get('native_dialog', {})
         assert native_dialog.get('status') == 'passed', 'Missing actual isolated Save As evidence'
@@ -194,6 +198,7 @@ def validate_windows_report(path, archive_hash, expected_version=None, expected_
             'optimization_worker_verified', 'failure_reports_verified', 'failure_recovery_verified')), 'Incomplete GUI archive regression evidence'
         lossless = report.get('lossless_archive', {})
         assert lossless.get('status') == 'passed', 'Missing native lossless archive checks'
+        assert lossless.get('internal_regression_only') is True, 'Retired archive checks must be labeled private regressions'
         assert all(lossless.get(key) is True for key in (
             'source_unchanged', 'decoded_payloads_equal', 'bookkeeping_equal', 'outer_header_equal',
             'unicode_paths_tested', 'unknown_editor_hd_data_preserved', 'existing_output_refused',

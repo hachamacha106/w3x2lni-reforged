@@ -5,11 +5,12 @@ local lang = require 'share.lang'
 local ui = require 'gui.new.template'
 local ev = require 'gui.event'
 local set_readonly = require 'ffi.textedit_readonly'
+local theme = require 'gui.new.theme'
 local root = fs.current_path()
 local view, data, element
 
 local template = ui.container {
-    style = { FlexGrow = 1, FlexBasis = 0, MinHeight = 0, Padding = 6 },
+    style = { FlexGrow = 1, FlexBasis = 0, MinHeight = 0, Padding = 16 },
     font = { size = 13 },
     ui.textedit {
         id = 'report_text',
@@ -32,13 +33,13 @@ local template = ui.container {
     },
     ui.label {
         text = lang.ui.COPY_HINT,
-        text_color = '#AAA',
+        text_color = theme.muted,
         align = 'start',
         font = { size = 12 },
         style = { Height = 20, FlexShrink = 0, MarginTop = 4 },
     },
     ui.container {
-        style = { Height = 32, FlexShrink = 0, FlexDirection = 'row', MarginTop = 4 },
+        style = { Height = 40, FlexShrink = 0, FlexDirection = 'row', MarginTop = 4 },
         ui.button {
             id = 'copy_report',
             title = lang.ui.COPY_ALL,

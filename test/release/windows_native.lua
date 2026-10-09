@@ -50,6 +50,25 @@ if action == 'runtime' then
     local text = table.concat(lines)
     assert(text:find(arg[3], 1, true), 'The CLI did not report the release version')
     print(text)
+    -- Exercise the actual public dispatcher with retired names. The dormant
+    -- archive library remains covered through test/release/archive_worker.lua.
+    local original_command = package.loaded['backend.command']
+    for _, retired in ipairs {'analyze', 'optimize'} do
+        assert(not package.searchpath('backend.cli.' .. retired, package.path),
+            'Retired archive command remains publicly dispatchable: ' .. retired)
+        package.loaded['backend.command'] = {retired}
+        lines = {}
+        dofile('backend/init.lua')
+        assert(#lines == 1 and lines[1] == lang.raw.INVALID:format(retired),
+            'Public dispatcher did not reject retired command: ' .. retired)
+    end
+    package.loaded['backend.command'] = original_command
+    lines = {}
+    require 'backend.cli.help'
+    local help = table.concat(lines)
+    assert(not help:find('analyze', 1, true) and not help:find('optimize', 1, true),
+        'Public help still advertises retired archive actions')
+    print('PUBLIC_ARCHIVE_ACTIONS_REMOVED|passed')
     print('PASS packaged Windows x86 Lua, native parsers, MPQ/CASC module loading and current-data defaults')
     return
 end

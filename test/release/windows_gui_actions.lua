@@ -1,4 +1,5 @@
--- Headless checks with the packaged x86 Lua/FFI and real GUI worker process.
+-- Headless conversion/worker checks with packaged x86 Lua/FFI.
+-- Retired archive services are exercised only through a private regression entry.
 -- The Save As call boundary is injected; no interactive dialog is displayed.
 return function(directory, lni_directory)
     local ffi = require 'ffi'
@@ -145,6 +146,7 @@ return function(directory, lni_directory)
         assert(not worker.spool_folder or not fs.exists(worker.spool_folder), 'Worker left its output capture directory')
         return io.load(saved_report)
     end
+    local archive_entry = (root / 'test' / 'release' / 'archive_worker.lua'):string()
     local input_kind = require 'gui.archive_input'
     assert(not input_kind.packed(fs.path(lni_directory)), 'An LNI folder cannot be optimized as an archive')
     assert(not input_kind.packed(fs.path(lni_directory) / '.w3x'), 'An LNI marker cannot be optimized as an archive')
@@ -160,12 +162,12 @@ return function(directory, lni_directory)
     assert(input_kind.packed(output / '地图 hráč' / '来源 hráč.W3X'), 'Windows map extension case should be accepted')
     print('PASS native Windows Optimize input kinds: packed map, dotted folders, map-like folders, LNI marker and missing file')
     local before = assert(io.load(output / '地图 hráč' / '来源 hráč.w3x'))
-    local report = run('backend/init.lua', {'analyze', lni_directory})
+    local report = run(archive_entry, {'analyze', lni_directory})
     assert(backend.lastword.type == 'success' and backend.report_text == nil,
         backend.report_text or report or 'Missing GUI worker diagnostics')
     assert(report:find('LNI project size', 1, true) and report:find('Analyze input: Passed', 1, true))
     assert(next(backend.report) and report:find('optimization: analysis only', 1, true))
-    local marker_report = run('backend/init.lua', {'analyze', (fs.path(lni_directory) / '.w3x'):string()})
+    local marker_report = run(archive_entry, {'analyze', (fs.path(lni_directory) / '.w3x'):string()})
     assert(backend.lastword.type == 'success' and marker_report:find('LNI project size', 1, true))
     local gui_lni = output / 'GUI conversion LNI'
     report = run('backend/init.lua', {'lni', (root / 'test' / 'fixtures' / 'HiTestMapFromWorldEditor.w3x'):string(), gui_lni:string()})
@@ -175,7 +177,7 @@ return function(directory, lni_directory)
     local archive = output / '地图 hráč' / '来源 hráč.w3x'
     local optimized = output / 'GUI worker 优化.w3x'
     assert(not fs.exists(optimized))
-    report = run('backend/init.lua', {'optimize', archive:string(), optimized:string()})
+    report = run(archive_entry, {'optimize', archive:string(), optimized:string()})
     assert(backend.lastword.type == 'success' and backend.report_text == nil,
         backend.report_text or report or 'Missing GUI worker diagnostics')
     assert(fs.exists(optimized) and #assert(io.load(optimized)) < #before)
@@ -193,7 +195,7 @@ return function(directory, lni_directory)
     assert(checked > 0 and original:load_file('(attributes)') == reopened:load_file('(attributes)'))
     assert(original:close() and reopened:close())
     -- A handled archive error still writes its report and delivers the error frame.
-    report = run('backend/init.lua', {'optimize', lni_directory, (output / 'Rejected folder.w3x'):string()})
+    report = run(archive_entry, {'optimize', lni_directory, (output / 'Rejected folder.w3x'):string()})
     assert(backend.lastword.type == 'error' and report:find('Optimize requires a packed', 1, true))
     assert(not fs.exists(output / 'Rejected folder.w3x'))
     -- A native/host worker failure may never write report.log: retain current diagnostics in memory.
@@ -261,9 +263,9 @@ require 'share.messager'.exit('success', 'Late success must not hide recovery fa
     assert(not failed_worker.out_rd and not failed_worker.err_rd and not fs.exists(failed_worker.cancel_folder))
     assert(backend.lastword.type == 'error' and backend.report_text:find('Native GUI update failure fixture', 1, true))
     assert(backend.report_text:find('RECOVERY_FINAL_DIAGNOSTIC', 1, true), 'Recovery lost final worker diagnostics')
-    report = run('backend/init.lua', {'analyze', lni_directory})
+    report = run(archive_entry, {'analyze', lni_directory})
     assert(backend.lastword.type == 'success' and backend.report_text == nil and report:find('LNI project size', 1, true))
     assert(io.load(archive) == before)
     print('GUI_ARCHIVE_ACTIONS|passed')
-    print('PASS native GUI workers: LNI folder/marker Analyze, Optimize, handled rejection, host failure reports and cooperative recovery/retry')
+    print('PASS native conversion worker, private archive service regressions, handled rejection, host failure reports and recovery/retry')
 end

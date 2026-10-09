@@ -89,7 +89,7 @@ def main():
         "status": "running", "started_utc": datetime.now(timezone.utc).isoformat(),
         "archive_sha256": sha256(archive.read_bytes()),
         "version": release["version"], "platform": "Windows", "native_windows_execution": True,
-        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS; headless GUI archive adapters/workers and isolated native Save As/output-entry controls",
+        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS; headless conversion/worker checks, private archive regressions and isolated native Save As/output-entry controls",
         "gui_tested": False, "system_clipboard_tested": False, "game_tested": False,
         "world_editor_tested": False, "casc_storage_extraction_tested": False,
         "archive_unchanged": False, "packaged_inputs_unchanged": False,
@@ -136,7 +136,9 @@ def main():
         def native(name, action, *arguments):
             return run(name, [lua, "-E", helper, root, action, *arguments])
 
-        native("native-runtime", "runtime", release["version"])
+        runtime_stdout = native("native-runtime", "runtime", release["version"])
+        assert b"PUBLIC_ARCHIVE_ACTIONS_REMOVED|passed" in runtime_stdout, "Removed archive actions are still public"
+        report["public_archive_actions_removed"] = True
         abi_bytes = files["NATIVE_ABI.json"]
         abi = json.loads(abi_bytes)
         # These queries use the IDs recorded by the compiled pinned-header probe.
@@ -236,6 +238,10 @@ def main():
                                "output_sha256": sha256(invalid_output.read_bytes())})
         report["pjass_verification"]["report_only_conversion"] = invalid_result
         report["pjass_verification"]["status"] = "passed"
+        # Preserve low-level archive safety coverage for the rebuilt StormLib DLL.
+        # These retired services are invoked only through a private test entry;
+        # w2l.exe and the GUI expose the conversion actions.
+        archive_worker = root / "test/release/archive_worker.lua"
         # The storage fixture includes Unicode paths and opaque/editor/HD members.
         lossless_stdout = native("lossless-native", "lossless", output)
         storage = re.search(rb"LOSSLESS_NATIVE saved=(\d+) size=(\d+) sector=(\d+)", lossless_stdout)
@@ -252,7 +258,7 @@ def main():
         assert lossless_input.read_bytes() == lossless_before, "GUI worker changed its source map"
         dialog_evidence = verify_save_dialog(root, evidence / "save-dialog")
         report["gui_archive_actions"] = {
-            "status": "passed", "headless": True, "interactive_dialog_tested": False,
+            "status": "passed", "headless": True, "internal_regression_only": True, "interactive_dialog_tested": False,
             "dialog_abi_verified": True, "dialog_unicode_buffers_verified": True,
             "dialog_cancel_and_errors_verified": True, "native_dialog": dialog_evidence, "lni_folder_analyzed": True,
             "lni_marker_analyzed": True, "lni_project_unchanged": True,
@@ -261,14 +267,14 @@ def main():
         log = root / "log/report.log"
         if log.exists():
             log.unlink()
-        run("lossless-analyze-cli", [root / "w2l.exe", "analyze", lossless_input, "-s"])
+        run("lossless-analyze-cli", [lua, "-E", archive_worker, "analyze", lossless_input, "-s"])
         analysis_log = log.read_bytes()
         (evidence / "lossless-analyze-cli.report.log").write_bytes(analysis_log)
         assert b"inventory: complete; optimization: eligible" in analysis_log
         assert b"Analyze input: Passed" in analysis_log
         assert lossless_input.read_bytes() == lossless_before, "Analyze modified its input"
         log.unlink()
-        run("lossless-optimize-cli", [root / "w2l.exe", "optimize", lossless_input, lossless_output, "-s"])
+        run("lossless-optimize-cli", [lua, "-E", archive_worker, "optimize", lossless_input, lossless_output, "-s"])
         optimize_log = log.read_bytes()
         (evidence / "lossless-optimize-cli.report.log").write_bytes(optimize_log)
         assert b"Optimize input: Passed" in optimize_log and b"Optimize output: Passed" in optimize_log
@@ -280,7 +286,7 @@ def main():
         marker.write_bytes(b"cancel")
         cancelled_output = output / "Cancelled archive.w3x"
         log.unlink()
-        run("lossless-cancel-cli", [root / "w2l.exe", "optimize", lossless_input, cancelled_output,
+        run("lossless-cancel-cli", [lua, "-E", archive_worker, "optimize", lossless_input, cancelled_output,
                                     "-s", "-cancel-file=" + str(marker)])
         cancellation_log = log.read_bytes()
         (evidence / "lossless-cancel-cli.report.log").write_bytes(cancellation_log)
@@ -290,7 +296,7 @@ def main():
         assert not list(lossless_input.parent.glob(".w2l-optimize-*")), "Cancellation left partial candidates"
         marker.unlink()
         report["lossless_archive"] = {
-            "status": "passed", "source_unchanged": True, "decoded_payloads_equal": True,
+            "status": "passed", "internal_regression_only": True, "source_unchanged": True, "decoded_payloads_equal": True,
             "bookkeeping_equal": True, "outer_header_equal": True, "unicode_paths_tested": True,
             "unknown_editor_hd_data_preserved": True, "existing_output_refused": True,
             "output_race_preserved": True, "cancellation_cleaned_up": True, "cli_cancellation_verified": True,

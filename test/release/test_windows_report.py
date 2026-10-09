@@ -31,6 +31,7 @@ def fixture():
             'diagnostic_count':1 if status=='Failed' else 0, 'raw_output_bytes':0 if status=='Skipped' else 100})
     report = {'version':'1.1.0','status':'passed','archive_sha256':'a'*64,
         'archive_unchanged':True,'packaged_inputs_unchanged':True,'native_windows_execution':True,
+        'public_archive_actions_removed':True,
         'conversion_count':4,'conversions':[{'name':name,'errors':0,'warnings':0,
             'native_contents_verified':True,'pjass':dict(passed)} for name in ('obj','lni','lni-to-obj','slk')],
         'steps':[{'name':'native-test','exit_code':0}],
@@ -43,7 +44,7 @@ def fixture():
             'create_offsets_verified':12,'find_offsets_verified':10,'exports_verified':len(abi['exports']),
             'constants_queried':[name for name in abi['constants'] if name!='MPQ_COMPRESSION_ZLIB'],
             'native_file_info_verified':True},
-        'gui_archive_actions':{'status':'passed','headless':True,'interactive_dialog_tested':False,
+        'gui_archive_actions':{'status':'passed','headless':True,'internal_regression_only':True,'interactive_dialog_tested':False,
             'dialog_abi_verified':True,'dialog_unicode_buffers_verified':True,'dialog_cancel_and_errors_verified':True,
             'native_dialog':{'status':'passed','isolated_desktop':True,'hook_used':False,
                 'input_desktop_switched':False,'interactive_dialog_tested':False,'gui_rendering_tested':False,
@@ -51,7 +52,7 @@ def fixture():
                 'unicode_verified':True,'cancellation_verified':True,'inputs_unchanged':True,'output_entry_verified':True},
             'lni_folder_analyzed':True,'lni_marker_analyzed':True,'lni_project_unchanged':True,
             'optimization_worker_verified':True,'failure_reports_verified':True,'failure_recovery_verified':True},
-        'lossless_archive':{'status':'passed' ,'source_unchanged':True,'decoded_payloads_equal':True,
+        'lossless_archive':{'status':'passed','internal_regression_only':True,'source_unchanged':True,'decoded_payloads_equal':True,
             'bookkeeping_equal':True,'outer_header_equal':True,'unicode_paths_tested':True,
             'unknown_editor_hd_data_preserved':True,'existing_output_refused':True,'output_race_preserved':True,
             'cancellation_cleaned_up':True,'cli_cancellation_verified':True,'attempted_sector_sizes':[512,4096,65536],
@@ -80,6 +81,19 @@ class WindowsReportTests(unittest.TestCase):
         for mutation in mutations:
             report=copy.deepcopy(original);mutation(report)
             with self.subTest(report=report),self.assertRaises(AssertionError):self.verify(report,files)
+
+    def test_retired_archive_actions_cannot_be_public_or_mislabeled(self):
+        original,files=fixture()
+        mutations=[lambda r:r.pop('public_archive_actions_removed'),
+                   lambda r:r.update(public_archive_actions_removed=False),
+                   lambda r:r['gui_archive_actions'].pop('internal_regression_only'),
+                   lambda r:r['lossless_archive'].update(internal_regression_only=False)]
+        for mutation in mutations:
+            report=copy.deepcopy(original);mutation(report)
+            with self.subTest(report=report),self.assertRaises(AssertionError):self.verify(report,files)
+        for action in ('analyze','optimize'):
+            public_files=dict(files, **{'script/backend/cli/' + action + '.lua': b'public action'})
+            with self.subTest(action=action),self.assertRaises(AssertionError):self.verify(original,public_files)
 
     def test_failed_checks_and_suppressed_errors_cannot_be_hidden(self):
         original,files=fixture()
