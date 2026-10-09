@@ -128,6 +128,35 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertFalse(source['dirty'])
         self.assertEqual(files['LICENSE.txt'], committed)
 
+    def test_pinned_crlf_notice_survives_fresh_checkout_without_dirty_source(self):
+        # Use the production attributes so a wildcard cannot reintroduce this bug.
+        (self.repo / '.gitattributes').write_bytes((ROOT / '.gitattributes').read_bytes())
+        name = 'docs/licenses/stormlib-MIT.txt'
+        notice = self.repo / name
+        notice.parent.mkdir(parents=True)
+        content = b'Pinned upstream license\r\nCopyright retained\r\n'
+        notice.write_bytes(content)
+        self.run_git('add', '.')
+        self.run_git('commit', '-qm', 'Byte-preserved pinned license')
+        self.assertEqual(self.run_git('cat-file', 'blob', 'HEAD:' + name), content)
+        # Force a real checkout through Git's attributes on a missing file.
+        notice.unlink()
+        self.run_git('checkout-index', '--force', '--', name)
+        self.assertEqual(notice.read_bytes(), content)
+        self.assertFalse(packager.clean_status(self.repo))
+        source, files, patch, status = packager.source_snapshot(self.repo)
+        self.assertFalse(status)
+        self.assertFalse(source['dirty'])
+        self.assertEqual(files[name], content)
+        selected = packager.portable_source_files(files)
+        selected['SOURCE_FILES.sha256'] = packager.checksum_manifest(selected)
+        self.assertEqual(verifier.verify_release_source(selected, self.repo, {'source': source}),
+                         len(selected) - 1)
+        # Preserving bytes must not conceal genuine edits to the notice.
+        notice.write_bytes(content + b'changed attribution\r\n')
+        with self.assertRaisesRegex(ValueError, 'clean and committed'):
+            packager.source_snapshot(self.repo)
+
     def test_archive_reproducible_and_changed_payload_rejected(self):
         root = 'w3x2lni-reforged-1.0.0'
         files = {'release.json': json.dumps({'archive_root': root}).encode(),
