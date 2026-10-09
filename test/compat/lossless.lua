@@ -119,6 +119,103 @@ local function changed_table(bytes, table_name, change)
     local rewritten = mpq.table_crypt(change(plain), key, true)
     return bytes:sub(1, pos) .. rewritten .. bytes:sub(pos + count * 16 + 1)
 end
+-- Inspection can retain only a prefix of a malformed table. Analysis may
+-- report those records, but absent metadata must not become invented members
+-- or permit a rewrite of an archive whose inventory cannot be proved.
+do
+    local original, fixture_names, fixture_provider = fixture()
+    local function preserve_failure(parsed, before, bytes)
+        assert(not parsed.complete and not parsed.eligible, 'Partial MPQ metadata became a complete inventory')
+        for _, explanation in ipairs(before) do rejected(parsed, explanation) end
+        local compressed = false
+        local accepted, explanation = pcall(mpq.encode, parsed, 4096, function(payload)
+            compressed = true
+            return payload
+        end)
+        assert(not accepted and explanation:find('Cannot encode an unverified inventory', 1, true)
+            and not compressed, 'Partial metadata reached archive encoding')
+        assert(parsed.bytes == bytes and original == fixture(), 'Malformed inventory changed the original archive bytes')
+    end
+    for _, malformed_index in ipairs {0, 4} do
+        local damaged = changed_table(original, '(block table)', function(table_bytes)
+            local first = malformed_index * 16 + 1
+            return table_bytes:sub(1, first - 1) .. string.pack('<I4', #original) .. table_bytes:sub(first + 4)
+        end)
+        local parsed = mpq.inspect(damaged)
+        assert(#parsed.hashes == parsed.hash_count and #parsed.blocks == malformed_index + 1,
+            'Malformed block fixture did not leave the intended partial block table')
+        rejected(parsed, 'File block exceeds the MPQ boundary')
+        local before, called = {}, {}
+        for _, explanation in ipairs(parsed.reasons) do before[#before + 1] = explanation end
+        mpq.inventory(parsed, fixture_names, function(name)
+            for index, fixture_name in ipairs(fixture_names) do
+                if name == fixture_name then
+                    assert(index <= #parsed.blocks, 'Provider was called for missing block metadata')
+                    called[index] = true
+                    return fixture_provider(name)
+                end
+            end
+            error('Provider received an invented archive name')
+        end)
+        rejected(parsed, 'MPQ block-table metadata is unavailable')
+        for index = #parsed.blocks + 1, #fixture_names do
+            assert(not called[index] and not parsed.by_block[index - 1], 'Absent block metadata became a member')
+        end
+        preserve_failure(parsed, before, damaged)
+        local accepted, explanation = pcall(mpq.inventory, mpq.inspect(damaged), fixture_names,
+            function() error('Cancelled inventory reached its provider') end, function() return true end)
+        assert(not accepted and explanation:find('Optimization cancelled', 1, true),
+            'Partial block-table inventory ignored cancellation')
+    end
+    local damaged = changed_table(original, '(hash table)', function(table_bytes)
+        for first = 1, #table_bytes, 16 do
+            if string.unpack('<I4', table_bytes, first + 12) < 0xFFFFFFFE then
+                return table_bytes:sub(1, first + 11) .. string.pack('<I4', #fixture_names) .. table_bytes:sub(first + 16)
+            end
+        end
+        error('No live hash-table entry in fixture')
+    end)
+    local parsed = mpq.inspect(damaged)
+    assert(#parsed.hashes < parsed.hash_count and #parsed.blocks == 0,
+        'Malformed hash fixture did not leave the intended partial hash table')
+    rejected(parsed, 'Hash entry references a missing block')
+    local before, partial_names = {}, {}
+    for _, explanation in ipairs(parsed.reasons) do before[#before + 1] = explanation end
+    for _, name in ipairs(fixture_names) do partial_names[#partial_names + 1] = name end
+    -- Begin directly in the unparsed suffix, rather than relying on a live
+    -- filename's probe chain to happen to reach a missing candidate.
+    for index = 1, 100 do
+        local name = 'unparsed-hash-candidate-' .. index
+        if (mpq.hash(name, 0) & (parsed.hash_count - 1)) + 1 > #parsed.hashes then
+            partial_names[#partial_names + 1] = name
+            break
+        end
+    end
+    assert(#partial_names == #fixture_names + 1, 'No name probes the missing hash suffix')
+    mpq.inventory(parsed, partial_names, function() error('Provider was called without any block metadata') end)
+    rejected(parsed, 'MPQ hash-table metadata is unavailable')
+    rejected(parsed, 'MPQ block-table metadata is unavailable')
+    assert(#parsed.files == 0 and next(parsed.by_block) == nil, 'Partial hash table manufactured archive members')
+    preserve_failure(parsed, before, damaged)
+    local accepted, explanation = pcall(mpq.inventory, mpq.inspect(damaged), partial_names,
+        function() error('Cancelled inventory reached its provider') end, function() return true end)
+    assert(not accepted and explanation:find('Optimization cancelled', 1, true),
+        'Partial hash-table inventory ignored cancellation')
+    -- Zero payloads do not prove that the entire hash table was inspected.
+    -- Removing a parsed sentinel models unavailable table metadata without a
+    -- live reference that could otherwise force the member count incomplete.
+    local empty_hash_bytes = mpq.table_crypt(string.rep('\255', 16 * 16), mpq.hash('(hash table)', 3), true)
+    local empty_bytes = 'MPQ\26' .. string.pack('<I4I4I2I2I4I4I4I4', 32, 32 + #empty_hash_bytes, 0, 7,
+        32, 32 + #empty_hash_bytes, 16, 0) .. empty_hash_bytes
+    local empty = mpq.inspect(empty_bytes)
+    assert(empty.eligible and #empty.hashes == 16 and #empty.blocks == 0)
+    empty.hashes[16] = nil
+    mpq.inventory(empty, {}, function() error('Empty inventory reached its provider') end)
+    rejected(empty, 'MPQ hash-table metadata is unavailable')
+    preserve_failure(empty, {}, empty_bytes)
+end
+print('PASS partial MPQ table diagnostics, unresolved member guards, rewrite refusal and cancellation')
+
 local alias = changed_table(info.bytes, '(hash table)', function(table_bytes)
     for pos = 1, #table_bytes, 16 do
         if string.unpack('<I4', table_bytes, pos + 12) == 1 then

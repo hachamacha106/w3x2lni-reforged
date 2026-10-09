@@ -153,8 +153,18 @@ end
 M.normalized = normalized
 
 function M.inventory(info, names, provider, cancelled)
+    info.complete = false
     if not info.hashes then return end
     local declared, matched, matched_hashes = {}, {}, {}
+    local hash_metadata_complete = #info.hashes == info.hash_count
+    local block_metadata_complete = info.blocks ~= nil and #info.blocks == info.block_count
+    local metadata_complete = hash_metadata_complete and block_metadata_complete
+    if not hash_metadata_complete then
+        reason(info, 'The file inventory is incomplete: MPQ hash-table metadata is unavailable')
+    end
+    if not block_metadata_complete then
+        reason(info, 'The file inventory is incomplete: MPQ block-table metadata is unavailable')
+    end
     for _, name in ipairs(names) do
         if cancelled and cancelled() then error('Optimization cancelled') end
         if #name == 0 or #name > 4096 or name:find('[\0\r\n]') or name:match('^[Ff][Ii][Ll][Ee]%d%d%d%d%d%d%d%d%.') then
@@ -170,6 +180,13 @@ function M.inventory(info, names, provider, cancelled)
                 local start = M.hash(name, 0) & (info.hash_count - 1)
                 for i = 0, info.hash_count - 1 do
                     local candidate = info.hashes[((start + i) & (info.hash_count - 1)) + 1]
+                    if not candidate then
+                        metadata_complete = false
+                        -- Inspection can stop partway through a malformed table.
+                        -- Missing records are never evidence of a live member.
+                        reason(info, 'The file inventory is incomplete: MPQ hash-table metadata is unavailable')
+                        break
+                    end
                     if candidate.block == MASK then break end
                     if candidate.block < 0xFFFFFFFE and candidate.a == a and candidate.b == b then
                         if hash then collisions = true end
@@ -178,17 +195,22 @@ function M.inventory(info, names, provider, cancelled)
                 end
                 if hash then
                     if collisions or matched[hash.block] then reason(info, 'Ambiguous filename hashes or aliases are present') end
-                    local block = info.blocks[hash.block + 1]
-                    local payload = provider(name)
-                    if type(payload) ~= 'string' or #payload ~= block.decoded_size then
-                        reason(info, 'Cannot read the complete member: ' .. name)
+                    local block = info.blocks and info.blocks[hash.block + 1]
+                    if not block then
+                        metadata_complete = false
+                        reason(info, 'The file inventory is incomplete: MPQ block-table metadata is unavailable')
                     else
-                        local member = {name = name, bytes = payload, block = block, stored_size = block.stored_size,
-                            decoded_size = block.decoded_size, locale = hash.locale}
-                        info.files[#info.files + 1] = member
-                        matched[hash.block] = member
-                        if not collisions then matched_hashes[hash.index] = true end
-                        if norm == '(SIGNATURE)' then reason(info, 'An archive signature is present') end
+                        local payload = provider(name)
+                        if type(payload) ~= 'string' or #payload ~= block.decoded_size then
+                            reason(info, 'Cannot read the complete member: ' .. name)
+                        else
+                            local member = {name = name, bytes = payload, block = block, stored_size = block.stored_size,
+                                decoded_size = block.decoded_size, locale = hash.locale}
+                            info.files[#info.files + 1] = member
+                            matched[hash.block] = member
+                            if not collisions then matched_hashes[hash.index] = true end
+                            if norm == '(SIGNATURE)' then reason(info, 'An archive signature is present') end
+                        end
                     end
                 elseif norm ~= '(ATTRIBUTES)' and norm ~= '(SIGNATURE)' then
                     reason(info, 'Listfile references a missing archive member: ' .. name)
@@ -196,7 +218,7 @@ function M.inventory(info, names, provider, cancelled)
             end
         end
     end
-    local complete = true
+    local complete = metadata_complete
     for _, hash in ipairs(info.hashes) do
         if hash.block < 0xFFFFFFFE and not matched_hashes[hash.index] then
             complete = false
