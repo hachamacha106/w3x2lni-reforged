@@ -83,20 +83,28 @@ return function(directory, lni_directory)
         end
         assert(worker.closed and backend.lastword, 'Worker lost its final report/result')
         assert(not worker.cancel_folder or not fs.exists(worker.cancel_folder), 'Worker left its cancellation directory')
+        assert(not worker.spool_folder or not fs.exists(worker.spool_folder), 'Worker left its output capture directory')
         return io.load(saved_report)
     end
     local before = assert(io.load(output / '地图 hráč' / '来源 hráč.w3x'))
     local report = run('backend/init.lua', {'analyze', lni_directory})
-    assert(backend.lastword.type == 'success' and backend.report_text == nil)
+    assert(backend.lastword.type == 'success' and backend.report_text == nil,
+        backend.report_text or report or 'Missing GUI worker diagnostics')
     assert(report:find('LNI project size', 1, true) and report:find('Analyze input: Passed', 1, true))
     assert(next(backend.report) and report:find('optimization: analysis only', 1, true))
     local marker_report = run('backend/init.lua', {'analyze', (fs.path(lni_directory) / '.w3x'):string()})
     assert(backend.lastword.type == 'success' and marker_report:find('LNI project size', 1, true))
+    local gui_lni = output / 'GUI conversion LNI'
+    report = run('backend/init.lua', {'lni', (root / 'test' / 'fixtures' / 'HiTestMapFromWorldEditor.w3x'):string(), gui_lni:string()})
+    assert(backend.lastword.type == 'success' and backend.report_text == nil,
+        backend.report_text or report or 'GUI conversion result missing')
+    assert(fs.exists(gui_lni / '.w3x') and fs.exists(gui_lni / 'map' / 'war3map.j'))
     local archive = output / '地图 hráč' / '来源 hráč.w3x'
     local optimized = output / 'GUI worker 优化.w3x'
     assert(not fs.exists(optimized))
     report = run('backend/init.lua', {'optimize', archive:string(), optimized:string()})
-    assert(backend.lastword.type == 'success' and backend.report_text == nil)
+    assert(backend.lastword.type == 'success' and backend.report_text == nil,
+        backend.report_text or report or 'Missing GUI worker diagnostics')
     assert(fs.exists(optimized) and #assert(io.load(optimized)) < #before)
     assert(report:find('Optimize input: Passed', 1, true) and report:find('Optimize output: Passed', 1, true))
     assert(io.load(archive) == before)
@@ -122,6 +130,36 @@ return function(directory, lni_directory)
     assert(backend.lastword.type == 'error' and backend.report_text:find('WORKER_STDERR', 1, true))
     assert(backend.report_text:find('WORKER_EXCEPTION', 1, true) and not backend.report_text:find('\0', 1, true))
     assert(io.load(archive) == before)
+    -- Capture multiple chunks written while polling is paused, including the final
+    -- result and stderr after the child has already exited. Pipe read-ahead in
+    -- the retained runtime must not make these bytes disappear from the report.
+    local tail_script, tail_ready, release = output / 'worker-tail.lua', output / 'tail-ready', output / 'tail-release'
+    assert(io.save(tail_script, [[
+local fs, thread = require 'bee.filesystem', require 'bee.thread'
+local message = require 'share.messager'
+message.progress(0)
+local ready = assert(io.open(arg[2], 'wb')); assert(ready:write('waiting')); assert(ready:close())
+while not fs.exists(fs.path(arg[3])) do thread.sleep(0.01) end
+message.report('Capture regression', 8, string.rep('C', 150000), 'COMPLETE_REPORT_TAIL')
+io.stderr:write(string.rep('D', 70000) .. '\nCOMPLETE_STDERR_TAIL\n'); io.stderr:flush()
+message.exit('success', 'Completed tail worker')
+]]))
+    local tail = assert(backend:open(tail_script:string(), {'analyze', tail_ready:string(), release:string()}))
+    local tail_deadline = clock.monotonic() + 10000
+    while not fs.exists(tail_ready) do
+        assert(clock.monotonic() < tail_deadline and not tail.exited, 'Tail worker did not start')
+        tail:update(); thread.sleep(0.01)
+    end
+    assert(io.save(release, 'continue'))
+    assert(tail.process:wait() == 0) -- Deliberately resume polling only after all output is written.
+    while not tail.exited do assert(clock.monotonic() < tail_deadline); tail:update() end
+    assert(backend.lastword.type == 'error') -- stderr remains visible despite the child success frame.
+    assert(#backend.report['8Capture regression'][1][1] == 150000)
+    assert(backend.report_text:find('COMPLETE_REPORT_TAIL', 1, true))
+    assert(backend.report_text:find('COMPLETE_STDERR_TAIL', 1, true), 'Final diagnostics were lost')
+    assert(tail.error:find(string.rep('D', 70000), 1, true), 'Diagnostic capture skipped middle bytes')
+    assert(not fs.exists(tail.cancel_folder), 'Tail worker capture was not cleaned up')
+
     -- A GUI update error must cancel/reap its owned child before allowing retry.
     local cooperative, ready = output / 'worker-cooperative.lua', output / 'worker-ready'
     assert(io.save(cooperative, [[

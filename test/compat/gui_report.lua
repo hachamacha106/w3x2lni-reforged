@@ -663,204 +663,266 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
 end
 
 
--- Actual GUI worker cancellation protocol; filesystem and process boundaries are
--- simulated so no user files or processes are touched.
+-- Actual GUI worker lifecycle with independent named-file readers. All file
+-- and process boundaries are simulated; no user files or processes are touched.
 do
-    local files, folders, observed = {}, {}, {}
+    local files, folders, observed = {}, {}, {active_readers = 0, readers = 0, writers = {}}
     local fs = {absolute = function(value) return value end,
         temp_directory_path = function() return path(root .. '/Temporary folder') end,
+        exists = function(value) local name = value:string(); return files[name] ~= nil or folders[name] ~= nil end,
         create_directory = function(value)
-            local name=value:string();if folders[name] then return false end
-            folders[name]=true;return true
+            local name = value:string(); if folders[name] then return false end
+            folders[name] = true; return true
         end,
-        remove = function(value) local name=value:string();files[name]=nil;folders[name]=nil;return true end}
+        remove = function(value)
+            local name = value:string()
+            if name == observed.remove_failure or observed.remove_failure_suffix
+                and name:sub(-#observed.remove_failure_suffix) == observed.remove_failure_suffix then
+                return false, 'cleanup fixture failure'
+            end
+            if files[name] ~= nil then files[name] = nil; return true end
+            if folders[name] then
+                for filename in pairs(files) do
+                    if filename:sub(1, #name + 1) == name .. '/' then return false, 'Directory not empty' end
+                end
+                folders[name] = nil; return true
+            end
+            return false
+        end}
+    local mock_io = {}
+    function mock_io.open(filename, mode)
+        assert(filename:match('/w2l%-worker%-%d+%-%d+%-%d+/[%a]+$'))
+        if observed.open_failure and filename:find(observed.open_failure, 1, true) then
+            return nil, 'open fixture failure'
+        end
+        if mode == 'rb' and files[filename] == nil then return nil, 'Missing capture' end
+        assert(mode == 'wb' or mode == 'rb')
+        local file = {filename = filename, mode = mode, position = 0}
+        if mode == 'wb' then files[filename] = ''; observed.writers[#observed.writers + 1] = file
+        else observed.readers = observed.readers + 1; observed.active_readers = observed.active_readers + 1 end
+        function file:write(bytes)
+            assert(self.mode == 'wb' and not self.closed)
+            if observed.write_failure and self.filename:match('/cancel$') then return nil, 'write failed' end
+            files[self.filename] = files[self.filename] .. bytes
+            self.position = self.position + #bytes
+            observed.writes = (observed.writes or 0) + 1
+            return self
+        end
+        function file:seek(whence, offset)
+            assert(self.mode == 'rb' and not self.closed, 'Parent must never seek the child writer handle')
+            if whence == 'end' then
+                local length = #files[self.filename]
+                self.position = length
+                if self.filename:match('/stdout$') and observed.race_on_seek then
+                    files[self.filename] = files[self.filename] .. observed.race_on_seek
+                    observed.race_on_seek = nil
+                end
+                return length
+            end
+            equal(whence, 'set'); assert(offset >= 0 and offset <= #files[self.filename])
+            self.position = offset; return offset
+        end
+        function file:read(size)
+            assert(self.mode == 'rb' and not self.closed)
+            assert(type(size) == 'number' and size > 0 and size <= 64 * 1024,
+                'GUI capture reads must be bounded byte counts')
+            if self.filename == observed.read_failure then error('capture fixture failure') end
+            local bytes = files[self.filename]:sub(self.position + 1, self.position + size)
+            self.position = self.position + #bytes
+            return bytes
+        end
+        function file:close()
+            assert(not self.closed, 'Capture handle closed twice')
+            self.closed = true
+            if self.mode == 'rb' then observed.active_readers = observed.active_readers - 1 end
+            if self.mode == 'wb' and observed.writer_close_failures and observed.writer_close_failures > 0 then
+                observed.writer_close_failures = observed.writer_close_failures - 1
+                return nil, 'writer close fixture failure: ' .. self.filename
+            end
+            return true
+        end
+        return file
+    end
     local process = {get_id = function() return 1234 end}
+    function process.peek() error('GUI workers must not use kernel pipe peek') end
+    function process.filemode() error('GUI captures are already opened as standard binary files') end
     function process.spawn(command)
-        observed.spawn=command
+        observed.spawn = command
+        assert(type(command.stdout) == 'table' and command.stdout.mode == 'wb')
+        assert(type(command.stderr) == 'table' and command.stderr.mode == 'wb')
         if observed.spawn_failure then return nil, 'spawn fixture failure' end
         if observed.spawn_exception then error('spawn fixture exception') end
-        local native = {running = true, stdout = observed.stdout, stderr = observed.stderr}
+        files[command.stdout.filename] = observed.stdout or ''
+        files[command.stderr.filename] = observed.stderr or ''
+        local native = {running = true, outname = command.stdout.filename, errname = command.stderr.filename,
+            stdout = command.stdout, stderr = command.stderr}
         function native:is_running()
             if observed.poll_failure then error('status fixture failure') end
             if not self.running and observed.final_stderr_on_exit then
-                self.stderr.bytes = self.stderr.bytes .. observed.final_stderr_on_exit
+                files[self.errname] = files[self.errname] .. observed.final_stderr_on_exit
                 observed.final_stderr_on_exit = nil
             end
             return self.running
         end
         function native:wait()
             if observed.awaiting_marker then assert(files[observed.awaiting_marker], 'Marker removed before worker reaping') end
+            assert(files[self.outname] ~= nil and files[self.errname] ~= nil, 'Capture removed before worker reaping')
             observed.waits = (observed.waits or 0) + 1
             return observed.exit_code or 0
         end
         function native:kill()
             observed.kills = (observed.kills or 0) + 1
             if observed.kill_failure then return false end
-            self.running = false
-            return true
+            self.running = false; return true
         end
         function native:close() observed.process_closes = (observed.process_closes or 0) + 1 end
         return native
     end
-    local mock_io = {open = function(filename, mode)
-        equal(mode, 'wb');assert(filename:match('/w2l%-cancel%-%d+%-%d+%-%d+/cancel$'))
-        local file = {}
-        function file:write(bytes)
-            if observed.write_failure then return nil, 'write failed' end
-            files[filename]=bytes;observed.writes=(observed.writes or 0)+1;return self
-        end
-        function file:close() return true end
-        return file
-    end}
-    function process.filemode(pipe, mode)
-        equal(mode, 'b', 'GUI pipe reads must match byte counts from peek')
-        pipe.binary = true
-        pipe.mode_calls = (pipe.mode_calls or 0) + 1
-    end
-    function process.peek(pipe)
-        assert(pipe.binary and not pipe.closed)
-        local n
-        if pipe.initial_zero then pipe.initial_zero = false; n = 0
-        else n = math.min(pipe.chunk_size, #pipe.bytes) end
-        pipe.available = n
-        return n -- Never signals EOF: simulate a retained native writer handle.
-    end
     local protocol = assert(loadfile(root .. '/script/share/protocol.lua'))()
-    local dependencies = {['bee.subprocess']=process,['bee.filesystem']=fs,
-        ['share.protocol']=protocol,['share.lang']={ui={FAILED='failed'}},
-        ['bee.time']={monotonic=function() return observed.now or 0 end}}
-    local environment=setmetatable({io=mock_io,require=function(name) return assert(dependencies[name],name) end},
-        {__index=_G})
-    local backend=assert(loadfile(root .. '/script/gui/backend.lua','t',environment))()
-    backend:init(path(root .. '/bin/host.exe'),path(root .. '/script'))
-    local original={'optimize','input.w3x','output.w3x'}
-    local worker=assert(backend:open('backend/init.lua',original))
-    equal(#original,3,'Worker must not mutate caller arguments')
-    equal(observed.spawn[6][4],'-cancel-file=' .. worker.cancel_file:string())
-    assert(folders[worker.cancel_folder:string()])
-    observed.write_failure=true
-    equal(worker:cancel(),false,'Cancellation write failure must be visible')
-    observed.write_failure=false
-    assert(worker:cancel());assert(worker:cancel())
-    equal(observed.writes,1,'Repeated cancellation must be idempotent')
-    equal(files[worker.cancel_file:string()],'cancel')
-    worker.process.running=false;assert(worker:update())
-    assert(worker.exited and not files[worker.cancel_file:string()] and not folders[worker.cancel_folder:string()],
-        'Completed worker must remove its marker and owned empty directory')
-    local plain=assert(backend:open('backend/init.lua',{'obj','input.w3x','output.w3x'}))
-    assert(not plain.cancel_file and not plain:cancel(),'Existing conversion workflow must retain its defaults')
-    observed.spawn_failure=true
-    assert(not backend:open('backend/init.lua',{'analyze','input.w3x'}))
-    assert(next(folders)==nil,'Failed spawn left a cancellation directory')
-    print('PASS archive GUI cooperative cancellation, idempotency, failures and owned-marker cleanup')
-    observed.spawn_failure = false
-    observed.spawn_exception = true
-    local failed, spawn_error = backend:open('backend/init.lua', {'optimize', 'in.w3x', 'out.w3x'})
-    assert(not failed and spawn_error:find('spawn fixture exception', 1, true))
-    assert(next(folders) == nil, 'A thrown spawn error left a cancellation directory')
-    observed.spawn_exception = false
-    local function pipe(bytes, chunk_size, initial_zero)
-        local value = {bytes = bytes, chunk_size = chunk_size or 13, initial_zero = initial_zero, closed = false}
-        function value:read(size)
-            assert(self.binary and not self.closed)
-            if self.raise_read then error('pipe fixture failure') end
-            assert(type(size) == 'number' and size > 0 and size <= self.available,
-                'GUI completion must never use an unbounded or unavailable-byte read')
-            local bytes = self.bytes:sub(1, size); self.bytes = self.bytes:sub(size + 1); return bytes
-        end
-        function value:close() self.closed = true end
-        return value
+    local dependencies = {['bee.subprocess'] = process, ['bee.filesystem'] = fs,
+        ['share.protocol'] = protocol, ['share.lang'] = {ui = {FAILED = 'failed'}},
+        ['bee.time'] = {monotonic = function() return observed.now or 0 end}}
+    local environment = setmetatable({io = mock_io, require = function(name) return assert(dependencies[name], name) end},
+        {__index = _G})
+    local backend = assert(loadfile(root .. '/script/gui/backend.lua', 't', environment))()
+    backend:init(path(root .. '/bin/host.exe'), path(root .. '/script'))
+    local function finish(worker)
+        worker.process.running = false
+        for _ = 1, 128 do if worker:update() then return end end
+        error('Mock worker did not complete its bounded drains')
     end
-    local function frame(value)
-        return ('Content-Length: %d\r\n%s'):format(#value, value)
+    local function clean()
+        assert(next(files) == nil and next(folders) == nil, 'Worker left an owned capture or directory')
+        equal(observed.active_readers, 0, 'Capture readers must close after each poll')
+        for _, file in ipairs(observed.writers) do assert(file.closed, 'Parent writer handle was retained') end
     end
+    local function frame(value) return ('Content-Length: %d\r\n%s'):format(#value, value) end
     local final = frame('{type="report",args={type="Archive",level=8,content="Final inventory",tip="full details"}}')
         .. frame('{type="exit",args={type="success",content="Optimization complete"}}')
-    observed.stdout, observed.stderr = pipe(final, 17, true), pipe('')
+    local original = {'optimize', 'input.w3x', 'output.w3x'}
+    local worker = assert(backend:open('backend/init.lua', original))
+    equal(#original, 3, 'Worker must not mutate caller arguments')
+    equal(observed.spawn[6][4], '-cancel-file=' .. worker.cancel_file:string())
+    assert(folders[worker.spool_folder:string()] and worker.process.stdout.closed and worker.process.stderr.closed)
+    observed.write_failure = true
+    equal(worker:cancel(), false, 'Cancellation write failure must be visible')
+    observed.write_failure = false
+    assert(worker:cancel()); assert(worker:cancel())
+    equal(observed.writes, 1, 'Repeated cancellation must be idempotent')
+    equal(files[worker.cancel_file:string()], 'cancel')
+    finish(worker); clean()
+    local plain = assert(backend:open('backend/init.lua', {'obj', 'input.w3x', 'output.w3x'}))
+    assert(plain.spool_folder and not plain.cancel_file and not plain:cancel(), 'Plain conversions own captures without a cancel marker')
+    finish(plain); clean()
+    for _, failure in ipairs {'spawn_failure', 'spawn_exception'} do
+        observed[failure] = true
+        local failed, err = backend:open('backend/init.lua', {'analyze', 'input.w3x'})
+        assert(not failed and err:find('spawn fixture', 1, true))
+        observed[failure] = nil; clean()
+    end
+    observed.open_failure = '/stderr'
+    local failed, err = backend:open('backend/init.lua', {'analyze', 'input.w3x'})
+    assert(not failed and err:find('open fixture failure', 1, true))
+    observed.remove_failure_suffix = '/stdout'
+    failed, err = backend:open('backend/init.lua', {'analyze', 'input.w3x'})
+    assert(not failed and err:find('open fixture failure', 1, true)
+        and err:find('Could not remove owned worker output', 1, true), 'Startup cleanup errors were hidden')
+    observed.open_failure, observed.remove_failure_suffix = nil, nil
+    for filename in pairs(files) do assert(fs.remove(path(filename))) end
+    for folder in pairs(folders) do assert(fs.remove(path(folder))) end
+    clean()
+    print('PASS GUI named captures, binary redirects, archive cancellation and setup/spawn cleanup')
+
+    -- Append after the reader takes its size snapshot: a fresh next reader
+    -- must collect the tail instead of closing because the kernel pipe ended.
+    observed.stdout, observed.stderr = final:sub(1, 4), ''
     local finished = assert(backend:open('backend/init.lua', {'optimize', 'in.w3x', 'out.w3x'}))
-    finished.process.running = false
-    assert(finished:update() and finished.exited)
+    observed.race_on_seek = final:sub(5)
+    finish(finished)
     equal(backend.lastword.type, 'success')
     equal(backend.report['8Archive'][1][1], 'Final inventory')
-    assert(observed.stdout.closed and observed.stderr.closed, 'Completed worker pipes were not closed')
-    equal(observed.stdout.mode_calls, 1); equal(observed.stderr.mode_calls, 1)
-    assert(observed.stdout.bytes == '' and observed.stderr.bytes == '', 'Chunked completion lost available bytes')
-    assert(backend.report_text == nil, 'A successful worker must use its saved report')
-
-    observed.stdout, observed.stderr = pipe(final, 11, true), pipe('native worker error\0traceback after NUL', 19)
+    assert(backend.report_text == nil and finished.out_path == nil and finished.err_path == nil)
+    clean()
+    observed.stdout, observed.stderr = final, 'native worker error\0traceback after NUL'
     local crashed = assert(backend:open('backend/init.lua', {'analyze', 'in.w3x'}))
     assert(not crashed:update())
-    assert(not observed.stdout.closed, 'stderr must not discard remaining stdout frames')
-    crashed.process.running = false
-    assert(crashed:update())
+    assert(crashed.out_path and crashed.err_path, 'stderr must not discard captured stdout')
+    finish(crashed)
     equal(backend.lastword.type, 'error')
     assert(backend.report_text:find('native worker error', 1, true))
-    assert(backend.report_text:find('traceback after NUL', 1, true) and not backend.report_text:find('\0', 1, true),
-        'Native stderr separators must not truncate the visible report')
-    assert(backend.report_text:find('Final inventory - full details', 1, true))
-    assert(observed.stdout.closed and observed.stderr.closed)
-
-    observed.stdout, observed.stderr = pipe('Invalid protocol\r\n'), pipe('')
-    local corrupt = assert(backend:open('backend/init.lua', {'analyze', 'in.w3x'}))
-    corrupt.process.running = false
-    assert(corrupt:update())
-    assert(backend.report_text:find('GUI worker protocol error', 1, true))
-    equal(backend.lastword.type, 'error')
-    observed.stdout, observed.stderr, observed.exit_code = nil, nil, 7
+    assert(backend.report_text:find('traceback after NUL', 1, true) and not backend.report_text:find('\0', 1, true))
+    assert(backend.report_text:find('Final inventory - full details', 1, true)); clean()
+    for _, bytes in ipairs {'Invalid protocol\r\n', final .. 'Content-Length: 100\r\n{'} do
+        observed.stdout, observed.stderr = bytes, ''
+        local corrupt = assert(backend:open('backend/init.lua', {'analyze', 'in.w3x'}))
+        finish(corrupt)
+        equal(backend.lastword.type, 'error')
+        assert(backend.report_text:find('protocol', 1, true)); clean()
+    end
+    observed.stdout, observed.stderr, observed.exit_code = '', '', 7
     local no_result = assert(backend:open('backend/init.lua', {'obj', 'in.w3x', 'out.w3x'}))
-    no_result.process.running = false
-    assert(no_result:update())
-    assert(backend.report_text:find('exit code 7', 1, true))
-    backend:clean()
-    assert(backend.report_text == nil and backend.lastword == nil, 'A new operation retained stale failure data')
-    assert(next(folders) == nil, 'Worker completion left an owned cancellation directory')
-    print('PASS GUI worker final-pipe drain, stderr/protocol/startup failures and current copyable diagnostics')
+    finish(no_result)
+    assert(backend.report_text:find('exit code 7', 1, true)); clean()
     observed.exit_code = 0
-    observed.stdout, observed.stderr = pipe(final, 17), pipe('stderr during recovery', 7)
-    observed.stdout.raise_read = true
+    local huge = ('x'):rep(2 * 1024 * 1024)
+    observed.stdout = frame('{type="report",args={type="Archive",level=8,content=' .. ('%q'):format(huge) .. ',tip=""}}') .. final
+    local large = assert(backend:open('backend/init.lua', {'analyze', 'in.w3x'}))
+    large.process.running = false
+    assert(not large:update() and not large.exited and files[large.out_path:string()], 'Large final drains must yield without cleanup')
+    finish(large)
+    equal(backend.report['8Archive'][1][1], huge, 'Bounded multi-tick final drain lost payload bytes'); clean()
+    print('PASS GUI fresh-reader offsets, raced final tail, complete large reports, malformed/incomplete protocol and diagnostics')
+
+    observed.stdout, observed.stderr = final, 'stderr during recovery'
     local recovering = assert(backend:open('backend/init.lua', {'optimize', 'in.w3x', 'out.w3x'}))
-    local marker = recovering.cancel_file:string()
-    local writes = observed.writes
-    recovering:recover('timer lifecycle failure')
-    recovering:recover('duplicate recovery request')
+    observed.read_failure = recovering.out_path:string()
+    local marker, writes = recovering.cancel_file:string(), observed.writes
+    recovering:recover('timer lifecycle failure'); recovering:recover('duplicate recovery request')
     equal(observed.writes, writes + 1, 'Recovery must request cooperative cancellation exactly once')
-    assert(files[marker] == 'cancel')
-    assert(not recovering:drain_failure() and not recovering.exited)
-    assert(not observed.stdout.closed and not observed.stderr.closed)
+    assert(files[marker] == 'cancel' and not recovering:drain_failure() and not recovering.exited)
     assert(backend.report_text:find('timer lifecycle failure', 1, true))
-    assert(backend.report_text:find('stderr during recovery', 1, true), 'One failed pipe prevented draining the other')
+    assert(backend.report_text:find('stderr during recovery', 1, true), 'One failed capture prevented draining the other')
+    equal(observed.active_readers, 0, 'Read failures must still close the capture reader')
     assert(files[marker], 'A running recovery lost its cancellation marker')
     recovering.process.running = false
-    observed.final_stderr_on_exit = 'final stderr after status'
-    observed.awaiting_marker = marker
+    observed.final_stderr_on_exit, observed.awaiting_marker = 'final stderr after status', marker
     assert(recovering:drain_failure() and recovering.exited)
-    observed.awaiting_marker = nil
-    assert(not files[marker] and next(folders) == nil)
-    assert(observed.stdout.closed and observed.stderr.closed)
-    assert(backend.report_text:find('final stderr after status', 1, true), 'Recovery discarded final diagnostics written during process exit')
-    assert(backend.lastword.type == 'error', 'A late success frame replaced the recovery failure')
-    observed.stdout, observed.stderr = pipe(final, 17, true), pipe('')
+    observed.awaiting_marker, observed.read_failure = nil, nil
+    assert(backend.report_text:find('final stderr after status', 1, true))
+    assert(backend.lastword.type == 'error', 'A late success frame replaced the recovery failure'); clean()
+    observed.stdout, observed.stderr = final, ''
     local retried = assert(backend:open('backend/init.lua', {'analyze', 'in.w3x'}))
-    assert(retried.process ~= recovering.process and backend.report_text == nil, 'Recovery did not release the previous worker for retry')
-    retried.process.running = false
-    assert(retried:update())
-
-    observed.stdout, observed.stderr, observed.now = nil, nil, 0
+    assert(retried.process ~= recovering.process and backend.report_text == nil)
+    finish(retried); clean()
+    observed.stdout, observed.stderr, observed.now = '', '', 0
     local forced = assert(backend:open('backend/init.lua', {'optimize', 'in.w3x', 'out.w3x'}))
-    forced:recover('unrecoverable polling failure')
-    marker = forced.cancel_file:string()
+    forced:recover('unrecoverable polling failure'); marker = forced.cancel_file:string()
     observed.poll_failure, observed.kill_failure, observed.now = true, true, 30001
     local waits = observed.waits
     assert(not forced:drain_failure() and not forced.exited)
     equal(observed.waits, waits, 'Failed termination must not block in wait() or permit retry')
-    assert(files[marker], 'Failed termination discarded its active cancellation marker')
-    observed.kill_failure = false
-    observed.awaiting_marker = marker
+    assert(files[marker], 'Failed termination discarded its active marker/captures')
+    observed.kill_failure, observed.awaiting_marker = false, marker
     assert(forced:drain_failure() and forced.exited)
     observed.awaiting_marker, observed.poll_failure = nil, false
-    assert(forced.forced_termination and backend.report_text:find('temporary candidate cleanup could not be verified', 1, true))
-    assert(not files[marker] and next(folders) == nil)
-    print('PASS GUI timer recovery cancels once, guards independent pipes/status, reaps before cleanup and permits retry')
+    assert(forced.forced_termination and backend.report_text:find('temporary candidate cleanup could not be verified', 1, true)); clean()
+    print('PASS GUI recovery preserves failure, cancels once, drains independently, reaps before cleanup and permits retry')
 
-
+    observed.stdout, observed.stderr, observed.writer_close_failures = final, '', 2
+    local close_failed = assert(backend:open('backend/init.lua', {'analyze', 'in.w3x'}))
+    assert(close_failed.process.running, 'Post-spawn close failure must retain ownership of the active child')
+    finish(close_failed)
+    assert(backend.report_text:find('writer close fixture failure', 1, true)
+        and backend.report_text:find('/stdout', 1, true) and backend.report_text:find('/stderr', 1, true),
+        'Both parent writer close failures must remain visible'); clean()
+    local cleanup_failed = assert(backend:open('backend/init.lua', {'analyze', 'in.w3x'}))
+    local kept = cleanup_failed.out_path:string()
+    observed.remove_failure = kept
+    finish(cleanup_failed)
+    assert(backend.report_text:find('Could not remove owned worker output', 1, true) and files[kept])
+    observed.remove_failure = nil
+    assert(fs.remove(path(kept))); assert(fs.remove(cleanup_failed.spool_folder)); clean()
+    backend:clean()
+    assert(backend.report_text == nil and backend.lastword == nil)
+    print('PASS GUI post-spawn handle failures remain owned and nonrecursive cleanup failures stay visible')
 end

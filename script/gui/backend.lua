@@ -3,21 +3,53 @@ local proto = require 'share.protocol'
 local lang = require 'share.lang'
 local fs = require 'bee.filesystem'
 local time = require 'bee.time'
-local cancel_sequence = 0
+local worker_sequence = 0
+local capture_chunk = 64 * 1024
+local drain_chunks = 16
 
-local function cleanup_cancel(folder, marker)
-    if marker then pcall(fs.remove, marker) end
-    if folder then pcall(fs.remove, folder) end -- Only an owned, empty directory.
+local function cleanup_capture(folder, marker, out_path, err_path)
+    local errors = {}
+    for _, filename in ipairs {marker or false, out_path or false, err_path or false, folder or false} do
+        if filename then
+            local checked, exists = pcall(fs.exists, filename)
+            if not checked then errors[#errors + 1] = tostring(exists)
+            elseif exists then
+                local removed, result, err = pcall(fs.remove, filename)
+                if not removed or not result then
+                    errors[#errors + 1] = 'Could not remove owned worker output ' .. filename:string()
+                        .. ': ' .. tostring(removed and err or result)
+                end
+            end
+        end
+    end
+    -- Remove only known files and then the owned, empty directory; never recurse.
+    return table.concat(errors, '\n')
 end
 
-local function cancel_folder()
-    local base = fs.absolute(fs.temp_directory_path() / 'w2l-cancel-parent'):parent_path()
+local function worker_folder()
+    local base = fs.absolute(fs.temp_directory_path() / 'w2l-worker-parent'):parent_path()
     for _ = 1, 100 do
-        cancel_sequence = cancel_sequence + 1
-        local folder = base / ('w2l-cancel-%d-%d-%d'):format(process.get_id(), os.time(), cancel_sequence)
-        if fs.create_directory(folder) then return folder, folder / 'cancel' end
+        worker_sequence = worker_sequence + 1
+        local folder = base / ('w2l-worker-%d-%d-%d'):format(process.get_id(), os.time(), worker_sequence)
+        if fs.create_directory(folder) then return folder end
     end
-    error('Cannot create an operation cancellation directory')
+    error('Cannot create a worker output directory')
+end
+
+local function close_file(file)
+    if not file then return end
+    local ok, closed, err = pcall(file.close, file)
+    if not ok then return closed end
+    if not closed then return err or 'Could not close worker output file' end
+end
+
+local function diagnostics(...)
+    local notes = {}
+    for i = 1, select('#', ...) do
+        local note = select(i, ...)
+        if note and note ~= '' then notes[#notes + 1] = tostring(note) end
+    end
+    return table.concat(notes, '\n')
 end
 
 local backend = {}
@@ -59,63 +91,71 @@ function mt:unpack_out(bytes)
     end
 end
 
+local function read_capture(worker, name)
+    local filename = worker[name .. '_path']
+    if not filename then return end
+    -- The retained pipe wrapper can hide fread's buffered bytes from peek.
+    -- Independent, freshly opened readers never move the child writer cursor.
+    local file, err = io.open(filename:string(), 'rb')
+    if not file then error(err or 'Could not read worker output', 0) end
+    local offset = worker[name .. '_offset']
+    local ok, bytes = pcall(function()
+        local length = assert(file:seek('end'))
+        assert(length >= offset, 'Worker output was unexpectedly truncated')
+        local count = math.min(length - offset, capture_chunk)
+        if count == 0 then return end
+        assert(file:seek('set', offset))
+        local content = assert(file:read(count))
+        assert(#content == count, 'Could not read complete worker output')
+        return content
+    end)
+    local close_error = close_file(file)
+    if not ok then error(bytes, 0) end
+    if close_error then error(close_error, 0) end
+    if bytes then worker[name .. '_offset'] = offset + #bytes end
+    return bytes
+end
+
 function mt:update_out()
-    if not self.out_rd then
-        return
-    end
-    local n = process.peek(self.out_rd)
-    if n == nil then
-        self.out_rd:close()
-        self.out_rd = nil
-        return
-    end
-    if n == 0 or n == nil then
-        return
-    end
-    local r = self.out_rd:read(n)
-    if r then
-        self:unpack_out(r)
-        return #r > 0
-    end
-    self.out_rd:close()
-    self.out_rd = nil
+    local bytes = read_capture(self, 'out')
+    if bytes then self:unpack_out(bytes); return true end
 end
 
 function mt:update_err()
-    if not self.err_rd then
-        return
+    local bytes = read_capture(self, 'err')
+    if bytes then self.error = self.error .. bytes; return true end
+end
+
+local function drain_capture(worker, update, limit)
+    for _ = 1, limit do
+        if not update(worker) then return true end
     end
-    local n = process.peek(self.err_rd)
-    if n == nil then
-        self.err_rd:close()
-        self.err_rd = nil
-        return
-    end
-    if n == 0 then
-        return
-    end
-    local r = self.err_rd:read(n)
-    if r then
-        self.error = self.error .. r
-        return #r > 0
-    end
-    self.err_rd:close()
-    self.err_rd = nil
+    return false
+end
+
+function mt:cleanup_capture()
+    local err = cleanup_capture(self.spool_folder, self.cancel_file, self.out_path, self.err_path)
+    if err ~= '' then self.error = self.error .. (#self.error > 0 and '\n' or '') .. err end
+    self.out_path, self.err_path = nil, nil
 end
 
 function mt:update_pipe()
     self:update_out()
     self:update_err()
     if not self.process:is_running() then
-        -- A descendant may retain a writer after the child ends. Drain only
-        -- currently available bytes rather than waiting for pipe EOF.
-        while self:update_out() do end
-        while self:update_err() do end
+        -- Bound work per tick, then finish draining on a subsequent tick.
+        local out_done = drain_capture(self, self.update_out, drain_chunks)
+        local err_done = drain_capture(self, self.update_err, drain_chunks)
+        if not out_done or not err_done then return false end
         self:unpack_out()
-        if self.out_rd then self.out_rd:close(); self.out_rd = nil end
-        if self.err_rd then self.err_rd:close(); self.err_rd = nil end
+        if not self.protocol_failed and (self.proto_s.length ~= nil
+            or self.proto_s.bytes and self.proto_s.bytes ~= '') then
+            self.protocol_failed = true
+            self.error = self.error .. '\nGUI worker ended with an incomplete protocol frame.'
+        end
         self.exit_code = self.process:wait()
-        cleanup_cancel(self.cancel_folder, self.cancel_file)
+        if self.process.close then pcall(self.process.close, self.process) end
+        self:cleanup_capture()
         return true
     end
     return false
@@ -203,20 +243,24 @@ function mt:recover(details)
     end
 end
 
-local function drain_failed_pipes(worker)
-    -- A failed pipe must not prevent polling the other pipe or the child.
+local function drain_failed_captures(worker, limit)
+    local complete = true
+    -- A failed capture must not prevent polling the other capture or child.
     for _, update in ipairs {worker.update_out, worker.update_err} do
-        while true do
+        local done = false
+        for _ = 1, limit do
             local ok, read = pcall(update, worker)
-            if not ok then recovery_note(worker, read); break end
-            if not read then break end
+            if not ok then recovery_note(worker, read); done = true; break end
+            if not read then done = true; break end
         end
+        if not done then complete = false end
     end
+    return complete
 end
 
 function mt:drain_failure()
     if self.exited then return true end
-    drain_failed_pipes(self)
+    drain_failed_captures(self, 1)
     local polled, running = pcall(self.process.is_running, self.process)
     if not polled then recovery_note(self, running) end
     local stopped = polled and not running
@@ -236,19 +280,12 @@ function mt:drain_failure()
     end
     if not stopped then backend:failure(self.error); return false end
     -- Collect diagnostics written between the first drain and confirmed exit.
-    drain_failed_pipes(self)
+    if not drain_failed_captures(self, drain_chunks) then return false end
     local waited, code = pcall(self.process.wait, self.process)
     if waited then self.exit_code = code
     else recovery_note(self, code); self.exit_code = 1 end
-    for _, name in ipairs {'out_rd', 'err_rd'} do
-        if self[name] then
-            local closed, err = pcall(self[name].close, self[name])
-            if not closed then recovery_note(self, err) end
-            self[name] = nil
-        end
-    end
     if self.process.close then pcall(self.process.close, self.process) end
-    cleanup_cancel(self.cancel_folder, self.cancel_file)
+    self:cleanup_capture()
     self.closed, self.exited = true, true
     backend:failure(self.error)
     return true
@@ -288,45 +325,59 @@ function backend:failure(details)
 end
 
 function backend:open(entry, commandline)
-    local folder, marker
+    local ok, folder = pcall(worker_folder)
+    if not ok then return nil, folder end
+    local out_path, err_path = folder / 'stdout', folder / 'stderr'
+    local marker
     if commandline[1] == 'analyze' or commandline[1] == 'optimize' then
-        local ok
-        ok, folder, marker = pcall(cancel_folder)
-        if not ok then return nil, folder end
+        marker = folder / 'cancel'
         local forwarded = {}
         for i, value in ipairs(commandline) do forwarded[i] = value end
         forwarded[#forwarded + 1] = '-cancel-file=' .. marker:string()
         commandline = forwarded
     end
-    local ok, p, err = pcall(process.spawn, {
+    local opened, stdout, err = pcall(io.open, out_path:string(), 'wb')
+    if not opened then err, stdout = stdout, nil end
+    local stderr
+    if stdout then
+        opened, stderr, err = pcall(io.open, err_path:string(), 'wb')
+        if not opened then err, stderr = stderr, nil end
+    end
+    if not stdout or not stderr then
+        local out_close, err_close = close_file(stdout), close_file(stderr)
+        local cleanup_error = cleanup_capture(folder, marker, out_path, err_path)
+        return nil, diagnostics(err or 'Could not create worker output files', out_close, err_close, cleanup_error)
+    end
+    local p
+    ok, p, err = pcall(process.spawn, {
         self.application:string(),
         '-E',
         '-e', ('package.cpath=[[%s]]'):format(package.cpath),
         entry,
         commandline,
         console = 'disable',
-        stdout = true,
-        stderr = true,
+        stdout = stdout,
+        stderr = stderr,
         cwd = self.currentdir:string(),
     })
     if not ok then err, p = p, nil end
+    local out_close, err_close = close_file(stdout), close_file(stderr)
     if not p then
-        cleanup_cancel(folder, marker)
-        return nil, err or 'The worker process could not be started.'
+        local cleanup_error = cleanup_capture(folder, marker, out_path, err_path)
+        return nil, diagnostics(err or 'The worker process could not be started.', out_close, err_close, cleanup_error)
     end
-    -- peek returns byte counts. CRT text translation would make read(n)
-    -- wait for extra bytes when protocol/diagnostics contain CRLF.
-    if p.stdout then process.filemode(p.stdout, 'b') end
-    if p.stderr then process.filemode(p.stderr, 'b') end
     self:clean()
+    -- Keep ownership if closing a parent writer failed after spawn. The child
+    -- still gets reaped and its owned files cleaned through the normal worker.
     return setmetatable({
         process = p,
-        out_rd = p.stdout,
-        err_rd = p.stderr,
+        out_path = out_path, err_path = err_path,
+        out_offset = 0, err_offset = 0,
+        spool_folder = folder,
         output = {},
-        error = '',
+        error = diagnostics(out_close, err_close),
         proto_s = {},
-        cancel_folder = folder, cancel_file = marker,
+        cancel_folder = marker and folder or nil, cancel_file = marker,
     }, mt)
 end
 
