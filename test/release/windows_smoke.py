@@ -2,7 +2,8 @@
 """Test an exact release ZIP with its real Windows x86 EXE and DLLs.
 
 Requires Windows and Python 3.10+. Creates a fresh, disposable extraction.
-Does not launch the GUI, use an installed game, or extract a CASC storage.
+Does not launch the interactive application GUI, use an installed game, or extract CASC.
+Actual Save As calls run on an owned, non-input desktop that is never displayed.
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ import traceback
 
 from release_artifact import FIXTURE_SHA256, inspect_archive, metadata, sha256
 from runtime_origins import PJASS_RELEASE, PJASS_SHA256
+from windows_save_dialog import run as verify_save_dialog
 
 
 def locale_values(path):
@@ -86,7 +88,7 @@ def main():
         "status": "running", "started_utc": datetime.now(timezone.utc).isoformat(),
         "archive_sha256": sha256(archive.read_bytes()),
         "version": release["version"], "platform": "Windows", "native_windows_execution": True,
-        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS; headless GUI archive adapters/workers",
+        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS; headless GUI archive adapters/workers and isolated native Save As calls",
         "gui_tested": False, "system_clipboard_tested": False, "game_tested": False,
         "world_editor_tested": False, "casc_storage_extraction_tested": False,
         "archive_unchanged": False, "packaged_inputs_unchanged": False,
@@ -247,10 +249,11 @@ def main():
         assert lni_before == {path.relative_to(lni).as_posix(): sha256(path.read_bytes())
                               for path in lni.rglob('*') if path.is_file()}, "Analyze modified the LNI project"
         assert lossless_input.read_bytes() == lossless_before, "GUI worker changed its source map"
+        dialog_evidence = verify_save_dialog(root, evidence / "save-dialog")
         report["gui_archive_actions"] = {
             "status": "passed", "headless": True, "interactive_dialog_tested": False,
             "dialog_abi_verified": True, "dialog_unicode_buffers_verified": True,
-            "dialog_cancel_and_errors_verified": True, "lni_folder_analyzed": True,
+            "dialog_cancel_and_errors_verified": True, "native_dialog": dialog_evidence, "lni_folder_analyzed": True,
             "lni_marker_analyzed": True, "lni_project_unchanged": True,
             "optimization_worker_verified": True, "failure_reports_verified": True, "failure_recovery_verified": True,
         }

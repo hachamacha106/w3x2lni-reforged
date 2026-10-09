@@ -45,6 +45,10 @@ def fixture():
             'native_file_info_verified':True},
         'gui_archive_actions':{'status':'passed','headless':True,'interactive_dialog_tested':False,
             'dialog_abi_verified':True,'dialog_unicode_buffers_verified':True,'dialog_cancel_and_errors_verified':True,
+            'native_dialog':{'status':'passed','isolated_desktop':True,'hook_used':False,
+                'input_desktop_switched':False,'interactive_dialog_tested':False,'gui_rendering_tested':False,
+                'owner_error_ffff_reproduced':True,'invalid_owner_discarded':True,'unowned_retry_verified':True,
+                'unicode_verified':True,'cancellation_verified':True,'inputs_unchanged':True},
             'lni_folder_analyzed':True,'lni_marker_analyzed':True,'lni_project_unchanged':True,
             'optimization_worker_verified':True,'failure_reports_verified':True,'failure_recovery_verified':True},
         'lossless_archive':{'status':'passed' ,'source_unchanged':True,'decoded_payloads_equal':True,
@@ -97,6 +101,20 @@ class WindowsReportTests(unittest.TestCase):
             with self.subTest(key=key),self.assertRaises(AssertionError):self.verify(report,files)
         report=copy.deepcopy(original);report['gui_archive_actions']['interactive_dialog_tested']=True
         with self.assertRaises(AssertionError):self.verify(report,files)
+
+    def test_actual_save_dialog_evidence_cannot_be_missing_or_simulated(self):
+        original,files=fixture()
+        mutations=[lambda r:r['gui_archive_actions'].pop('native_dialog'),
+                   lambda r:r['gui_archive_actions']['native_dialog'].update(status='failed'),
+                   lambda r:r['gui_archive_actions']['native_dialog'].update(hook_used=True)]
+        for key in ('input_desktop_switched','interactive_dialog_tested','gui_rendering_tested'):
+            mutations.append(lambda r,key=key:r['gui_archive_actions']['native_dialog'].update({key:True}))
+        for key in ('isolated_desktop','owner_error_ffff_reproduced','invalid_owner_discarded',
+                    'unowned_retry_verified','unicode_verified','cancellation_verified','inputs_unchanged'):
+            mutations.append(lambda r,key=key:r['gui_archive_actions']['native_dialog'].update({key:False}))
+        for mutation in mutations:
+            report=copy.deepcopy(original);mutation(report)
+            with self.subTest(report=report),self.assertRaises(AssertionError):self.verify(report,files)
 
     def test_dll_abi_and_preservation_evidence_bound_to_package(self):
         original,files=fixture()

@@ -160,18 +160,25 @@ local template = ui.container {
             on = {
                 click = function ()
                     local ok, err = xpcall(function()
-                        if worker and not worker.exited then
+                        if window._choosing_output or window._closing or worker and not worker.exited then
                             return
                         end
                         local arguments = {window._mode, window._filename:string()}
                         if window._mode == 'optimize' then
-                            local destination, dialog_error = save_dialog {
+                            -- An unowned fallback dialog still pumps this GUI's messages.
+                            -- Do not permit nested starts or a new map during path selection.
+                            local dialog_options = {
                                 title = lang.ui.OPTIMIZE_SAVE,
                                 filename = window._filename:stem():string() .. '.optimized' .. window._filename:extension():string(),
                                 folder = window._filename:parent_path():string(),
                             }
+                            window._choosing_output = true
+                            local chosen, destination, dialog_error = pcall(save_dialog, dialog_options)
+                            window._choosing_output = false
+                            if not chosen then error(destination, 0) end
                             if dialog_error then error(dialog_error, 0) end
-                            if not destination then return end
+                            if not destination or window._closing or window._mode ~= arguments[1]
+                                or window._filename:string() ~= arguments[2] then return end
                             arguments[3] = destination
                             if fs.exists(fs.path(arguments[3])) then
                                 messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_NEW_PATH)
@@ -192,7 +199,7 @@ local template = ui.container {
                         timer.loop(100, delayedtask)
                         window._worker = worker
                     end, debug.traceback)
-                    if not ok then
+                    if not ok and not window._closing then
                         backend:clean()
                         backend:failure(err)
                         update_result()

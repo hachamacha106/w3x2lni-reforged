@@ -180,6 +180,14 @@ def validate_windows_report(path, archive_hash, expected_version=None, expected_
         gui = report.get('gui_archive_actions', {})
         assert gui.get('status') == 'passed' and gui.get('headless') is True, 'Missing native GUI archive adapter/worker evidence'
         assert gui.get('interactive_dialog_tested') is False, 'Headless checks cannot claim interactive dialog testing'
+        native_dialog = gui.get('native_dialog', {})
+        assert native_dialog.get('status') == 'passed', 'Missing actual isolated Save As evidence'
+        assert native_dialog.get('hook_used') is False, 'A hook can change the real Save As implementation'
+        for key in ('input_desktop_switched', 'interactive_dialog_tested', 'gui_rendering_tested'):
+            assert native_dialog.get(key) is False, 'Isolated Save As checks cannot claim ' + key
+        for key in ('isolated_desktop', 'owner_error_ffff_reproduced', 'invalid_owner_discarded',
+                    'unowned_retry_verified', 'unicode_verified', 'cancellation_verified', 'inputs_unchanged'):
+            assert native_dialog.get(key) is True, 'Missing native Save As check: ' + key
         assert all(gui.get(key) is True for key in (
             'dialog_abi_verified', 'dialog_unicode_buffers_verified', 'dialog_cancel_and_errors_verified',
             'lni_folder_analyzed', 'lni_marker_analyzed', 'lni_project_unchanged',

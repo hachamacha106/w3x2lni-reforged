@@ -505,8 +505,11 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     end
     ui.createEx = function() return {} end
     local native_window = {} -- Deliberately distinct from the controller table.
-    local window = {_filename = path(root .. '/Maps with spaces/input.w3x'),
-        _window = native_window, _color = '#00ADD9'}
+    -- Share the actual main controller: its drop/close handlers must see the
+    -- same modal-selection state as the action handlers below.
+    local window = app.window
+    window._filename, window._window, window._color = path(root .. '/Maps with spaces/input.w3x'),
+        native_window, '#00ADD9'
     function window:set_theme(title, color)
         self._color = color
         for _, listener in ipairs(observed.events) do listener(color, title) end
@@ -519,6 +522,7 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
         self.message, self.progress, self.lastword, self.report_text = '', nil, nil, nil
     end
     function backend:failure(details)
+        observed.failures = (observed.failures or 0) + 1
         self.message, self.lastword = labels.FAILED, {type = 'error', content = labels.FAILED}
         self.report_text = tostring(details)
     end
@@ -542,6 +546,8 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     end
     local function save_dialog(options)
         observed.dialogs[#observed.dialogs + 1] = options
+        if observed.dialog_callback then observed.dialog_callback() end
+        if observed.dialog_exception then error('dialog fixture exception') end
         if observed.dialog_failure then return nil, 'dialog fixture failure' end
         if not observed.accept_dialog then return nil end
         return observed.destination
@@ -655,10 +661,112 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     assert(backend.report_text == nil, 'Retry must clear the previous failure report')
     assert(not app.loop_quit, 'A startup or update error must not close the application')
 
+    -- A NULL-owner retry leaves the app window enabled. The nested native
+    -- message loop must not permit another Start or map drop during selection.
+    local picker_input = window._filename:string()
+    local picker_opens, picker_dialogs = #observed.opens, #observed.dialogs
+    local nested_completed = false
+    observed.dialog_callback = function()
+        assert(window._choosing_output, 'Save As must guard the complete native selection call')
+        start()
+        equal(#observed.dialogs, picker_dialogs + 1, 'Nested Start opened another picker')
+        equal(#observed.opens, picker_opens, 'Nested Start launched a worker')
+        app.ext.on_dropfile(root .. '/Never read this dropped map.w3x')
+        equal(window._filename:string(), picker_input, 'A modal map drop changed the selected input')
+        equal(window._mode, 'optimize', 'A modal map drop changed the operation')
+        nested_completed = true
+    end
+    observed.accept_dialog = false
+    start()
+    assert(nested_completed, 'Nested Start/drop checks did not complete')
+    assert(not window._choosing_output, 'Cancellation left selection locked')
+    equal(#observed.opens, picker_opens, 'Cancellation after nested messages launched a worker')
+    observed.dialog_callback = nil
+    for _, failure in ipairs {'dialog_failure', 'dialog_exception'} do
+        observed[failure] = true
+        start()
+        observed[failure] = false
+        assert(not window._choosing_output, failure .. ' left selection locked')
+        equal(#observed.opens, picker_opens, failure .. ' launched a worker')
+        assert(backend.report_text:find(failure == 'dialog_failure' and 'dialog fixture failure'
+            or 'dialog fixture exception', 1, true), 'Picker failure lost its diagnostic')
+    end
+    local good_input = window._filename
+    local invalid_options_input = path(good_input:string())
+    function invalid_options_input:stem() error('output options fixture exception') end
+    window._filename = invalid_options_input
+    local dialogs_before_options = #observed.dialogs
+    start()
+    assert(not window._choosing_output, 'Building dialog options left selection locked')
+    equal(#observed.dialogs, dialogs_before_options, 'Invalid options reached the native picker')
+    equal(#observed.opens, picker_opens, 'Invalid options launched a worker')
+    assert(backend.report_text:find('output options fixture exception', 1, true))
+    window._filename = good_input
+    observed.accept_dialog = true
+    start()
+    equal(#observed.opens, picker_opens + 1, 'A picker exception/cancellation must allow a fresh retry')
+    assert(not window._choosing_output and backend.report_text == nil)
+    print('PASS ' .. locale .. ' Save As nested Start/drop rejection and cancellation/error recovery')
+
+    local original_input = window._filename
+    for _, mutation in ipairs {'mode', 'input'} do
+        local opens_before_change = #observed.opens
+        observed.dialog_callback = function()
+            assert(window._choosing_output)
+            if mutation == 'mode' then window._mode = 'analyze'
+            else window._filename = path(root .. '/Changed during picker.w3x') end
+        end
+        start()
+        equal(#observed.opens, opens_before_change, 'Picker ' .. mutation .. ' change launched a stale operation')
+        assert(not window._choosing_output)
+        window._mode, window._filename = 'optimize', original_input
+    end
+    observed.dialog_callback = nil
     local closing_cancelled = false
-    app.window._worker = {exited = false, cancel_file = true, cancel = function() closing_cancelled = true end}
-    app.windows[1]:close()
+    window._worker = {exited = false, cancel_file = true, cancel = function() closing_cancelled = true end}
+    local opens_before_close = #observed.opens
+    observed.dialog_callback = function()
+        assert(window._choosing_output)
+        app.windows[1]:close()
+        assert(window._closing and app.loop_quit, 'Native Close must mark the controller before quitting')
+    end
+    start()
     assert(closing_cancelled, 'Closing the app must request cancellation of a new archive action')
+    equal(#observed.opens, opens_before_close, 'Close during Save As launched a worker after quitting')
+    assert(not window._choosing_output, 'Close during Save As left selection locked')
+    local dialogs_before_close = #observed.dialogs
+    start()
+    app.ext.on_dropfile(root .. '/Never read this closing map.w3x')
+    equal(#observed.dialogs, dialogs_before_close, 'Closing application opened another picker')
+    equal(#observed.opens, opens_before_close, 'Closing application launched another worker')
+    equal(window._filename, original_input, 'Closing map drop changed the selected input')
+    -- A separate controller proves the exception-after-Close route without
+    -- pretending an already destroyed window can be reopened.
+    local close_failure_app = create_app(locale)
+    local close_failure_window = close_failure_app.window
+    close_failure_window._mode, close_failure_window._filename = 'optimize', original_input
+    environment.window = close_failure_window
+    local close_template_index, close_data_index = #captured + 1, #captured_data + 1
+    assert(loadfile(root .. '/script/gui/new/page/convert.lua', 't', environment))()
+    local close_start = assert(handler(captured[close_template_index], labels.START))
+    observed.dialog_callback = function()
+        assert(close_failure_window._choosing_output)
+        close_failure_app.windows[1]:close()
+        assert(close_failure_window._closing and close_failure_app.loop_quit)
+    end
+    observed.dialog_exception = true
+    local failures_before_close, opens_before_exception = observed.failures, #observed.opens
+    close_start()
+    assert(not close_failure_window._choosing_output, 'Close plus picker exception left selection locked')
+    equal(#observed.opens, opens_before_exception, 'Close plus picker exception launched a worker')
+    equal(observed.failures, failures_before_close, 'Picker failure updated diagnostics after the window closed')
+    local close_data = captured_data[close_data_index]
+    assert(not close_data.report.visible and not close_data.progress.visible and close_data.message == '',
+        'Picker failure updated destroyed UI state')
+    local close_dialogs = #observed.dialogs
+    close_start()
+    equal(#observed.dialogs, close_dialogs, 'Closing app retried the throwing picker')
+    print('PASS ' .. locale .. ' Save As close/mode/input changes abort stale operations')
     print('PASS ' .. locale .. ' Analyze/Optimize routing, guarded Save As, cancellation and no overwrite')
 end
 

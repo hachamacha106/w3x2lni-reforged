@@ -10,7 +10,7 @@ window = {}
 
 ext.on_timer = timer.update
 function ext.on_dropfile(filename)
-    if window._worker and not window._worker.exited then
+    if window._choosing_output or window._closing or window._worker and not window._worker.exited then
         return
     end
     local check_lni_mark = require 'share.check_lni_mark'
@@ -80,6 +80,7 @@ function window:create(t)
     -- Use the native frame for resize borders, maximize/restore and the system menu.
     local win = gui.Window.create { frame = true }
     function win.onclose()
+        window._closing = true
         if window._worker and not window._worker.exited and window._worker.cancel_file then
             pcall(window._worker.cancel, window._worker)
         end

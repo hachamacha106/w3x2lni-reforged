@@ -25,7 +25,7 @@ return function(directory, lni_directory)
     local destination = (output / '选择 hráč 😀.optimized.w3x'):string()
     local owner = ffi.cast('void*', 123)
     local called = false
-    local selected = choose(options, {owner=function() return owner end, error=function() error('Unexpected error query') end,
+    local selected = choose(options, {owner=function() return owner end, valid=function() return true end, error=function() error('Unexpected error query') end,
         show=function(record)
             collectgarbage('collect') -- Pointer targets must remain rooted across the native call.
             local value = record[0]
@@ -55,6 +55,65 @@ return function(directory, lni_directory)
     assert(cancelled == nil and cancel_error == nil)
     local failed, diagnostic = rejected(0x3003)
     assert(failed == nil and diagnostic:find('0x3003', 1, true))
+    local function retry_case(first_error, second_error, invalid)
+        local calls, error_calls, record_one = 0, 0
+        local selected, diagnostic = choose(options, {
+            owner=function() return owner end,
+            valid=function(value) assert(value == owner); return not invalid end,
+            error=function() error_calls = error_calls + 1; return calls == 1 and first_error or second_error end,
+            show=function(record)
+                calls = calls + 1
+                if calls == 1 then
+                    record_one = record
+                    assert(text(record[0].lpstrFile) == options.filename)
+                    if invalid then assert(tonumber(ffi.cast('uintptr_t', record[0].hwndOwner)) == 0)
+                    else assert(record[0].hwndOwner == owner) end
+                    record[0].lpstrFile[0] = 88 -- A failure must not leak a partial name into retry.
+                    return 0
+                end
+                assert(calls == 2 and record ~= record_one)
+                collectgarbage('collect')
+                assert(tonumber(ffi.cast('uintptr_t', record[0].hwndOwner)) == 0)
+                assert(text(record[0].lpstrFile) == options.filename)
+                assert(text(record[0].lpstrInitialDir) == options.folder and text(record[0].lpstrTitle) == options.title)
+                return 0
+            end})
+        assert(selected == nil and calls == error_calls)
+        return calls, diagnostic
+    end
+    local count, retry_error = retry_case(0xFFFF, 0)
+    assert(count == 2 and retry_error == nil, 'Owner creation failure must retry once; cancellation stays cancellation')
+    count, retry_error = retry_case(0xFFFF, 0xFFFF)
+    assert(count == 2 and retry_error:find('0xFFFF', 1, true), 'Persistent creation failure must stop and remain visible')
+    for _, code in ipairs {0, 0x3003} do
+        count, retry_error = retry_case(code, 0)
+        assert(count == 1 and (code ~= 0 or retry_error == nil), 'Cancellation and other errors must not retry')
+    end
+    count, retry_error = retry_case(0xFFFF, 0, true)
+    assert(count == 1 and retry_error:find('0xFFFF', 1, true), 'Invalid owners must be discarded before the first call')
+    local attempts, error_reads = 0, 0
+    local retried = choose(options, {owner=function() return owner end, valid=function() return true end,
+        error=function() error_reads = error_reads + 1; return 0xFFFF end,
+        show=function(record)
+            attempts = attempts + 1
+            if attempts == 1 then record[0].lpstrFile[0] = 88; return 0 end
+            assert(attempts == 2 and tonumber(ffi.cast('uintptr_t', record[0].hwndOwner)) == 0)
+            assert(text(record[0].lpstrFile) == options.filename)
+            local wide, length = unicode.u2w(destination)
+            ffi.copy(record[0].lpstrFile, wide, (length + 1) * 2)
+            return 1
+        end})
+    assert(retried == destination and attempts == 2 and error_reads == 1 and not fs.exists(fs.path(destination)))
+    local null_calls = 0
+    local null_result, null_error = choose(options, {owner=function() return ffi.cast('void*', 0) end,
+        valid=function() error('NULL owner must not require validation') end,
+        error=function() return 0xFFFF end,
+        show=function(record)
+            null_calls = null_calls + 1
+            assert(tonumber(ffi.cast('uintptr_t', record[0].hwndOwner)) == 0)
+            return 0
+        end})
+    assert(null_result == nil and null_calls == 1 and null_error:find('0xFFFF', 1, true))
     assert(not pcall(choose, {filename='bad\0name'}, {}))
     for _, malformed in ipairs {'empty', 'unterminated'} do
         local accepted = pcall(choose, options, {owner=function() return nil end,
