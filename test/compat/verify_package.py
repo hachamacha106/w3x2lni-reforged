@@ -148,13 +148,15 @@ def verify_release_source(files, repo, info):
     expected_names = set()
     prefixes = ('script/', 'test/', 'make/', 'docs/', 'data/warcraft-current/')
     roots = {'README.md', 'CHANGELOG.md', 'LICENSE.txt', 'config.ini', 'release.json'}
+    # Independently enforce the portable ZIP's source-build input exclusions.
+    excluded = {'script/share/gitlog.lua', 'make/rcedit.exe', 'make/yue.dll'}
     for record in git('ls-tree', '-r', '-z', source['tree']).split(b'\0'):
         if not record:
             continue
         attributes, name = record.split(b'\t', 1)
         mode, kind, oid = attributes.decode().split()
         name = name.decode()
-        if kind == 'blob' and (name.startswith(prefixes) or name in roots) and name != 'script/share/gitlog.lua':
+        if kind == 'blob' and (name.startswith(prefixes) or name in roots) and name not in excluded:
             assert mode in ('100644', '100755'), 'Non-regular source file: ' + name
             expected_names.add(name)
     assert set(manifest) == expected_names, 'Packaged source manifest differs from committed source set'

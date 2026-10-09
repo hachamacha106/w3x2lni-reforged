@@ -147,6 +147,62 @@ class ReleasePackagingTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'ZIP checksum mismatches'):
             verifier.inspect_archive(broken)
 
+    def test_portable_zip_excludes_build_inputs_but_preserves_source_and_runtime(self):
+        (self.repo / 'make').mkdir()
+        build_inputs = {'make/rcedit.exe': b'icon resource build tool',
+                        'make/yue.dll': b'historical source-build GUI library'}
+        for name, content in build_inputs.items():
+            (self.repo / name).write_bytes(content)
+        (self.repo / 'make/install.lua').write_bytes(b"return 'source build instructions'\n")
+        (self.repo / 'script/share').mkdir()
+        (self.repo / 'script/share/gitlog.lua').write_bytes(b"return 'stale generated log'\n")
+        self.run_git('add', '.')
+        self.run_git('commit', '-qm', 'Historical source-build inputs')
+        source, entire_source, patch, status = packager.source_snapshot(self.repo)
+        self.assertFalse(status)
+        for name, content in build_inputs.items():
+            self.assertEqual(entire_source[name], content)
+            self.assertIn(name.encode(), patch)
+        selected = packager.portable_source_files(entire_source)
+        self.assertEqual(set(selected), {'script/main.lua', 'make/install.lua'})
+        upstream = {'bin/old%d.dll' % i: ('retained%d' % i).encode() for i in range(20)}
+        upstream.update({'bin/yue.dll': b'verified portable GUI library',
+                         'bin/stormlib.dll': b'verified portable archive library'})
+        files = dict(upstream, **selected)
+        files['SOURCE_FILES.sha256'] = packager.checksum_manifest(selected)
+        native = packager.apply_origins(files, upstream, source)
+        archive, _ = packager.write_verified_zip(self.repo / 'build/portable.zip',
+                                                 verifier.ROOT_NAME, files, 1791530000)
+        observed = verifier.inspect_archive(archive)
+        info = {'source': source, 'native_runtime': native}
+        self.assertEqual(verifier.verify_release_source(observed, self.repo, info), len(selected))
+        self.assertEqual(verifier.verify_origins(observed, info, upstream), 22)
+        self.assertEqual(observed['bin/yue.dll'], upstream['bin/yue.dll'])
+        for name in build_inputs:
+            self.assertNotIn(name, observed)
+            with self.subTest(unexpected_source=name):
+                invalid = dict(observed, **{name: build_inputs[name]})
+                invalid['SOURCE_FILES.sha256'] = packager.checksum_manifest(
+                    dict(selected, **{name: build_inputs[name]}))
+                with self.assertRaisesRegex(AssertionError, 'committed source set'):
+                    verifier.verify_release_source(invalid, self.repo, info)
+        incomplete = dict(observed)
+        incomplete['SOURCE_FILES.sha256'] = packager.checksum_manifest({'script/main.lua': selected['script/main.lua']})
+        with self.assertRaisesRegex(AssertionError, 'committed source set'):
+            verifier.verify_release_source(incomplete, self.repo, info)
+        changed = dict(observed, **{'bin/yue.dll': build_inputs['make/yue.dll']})
+        with self.assertRaisesRegex(ValueError, 'Retained native binary changed'):
+            packager.apply_origins(changed, upstream, source)
+
+    def test_unknown_source_native_files_still_fail_inventory_verification(self):
+        upstream = {'bin/old%d.dll' % i: ('retained%d' % i).encode() for i in range(22)}
+        for name in ('make/unapproved.dll', 'make/unapproved.exe'):
+            with self.subTest(unapproved=name):
+                selected = packager.portable_source_files({name: b'unknown native file'})
+                self.assertIn(name, selected)
+                with self.assertRaisesRegex(ValueError, 'Unexpected or missing portable native file'):
+                    packager.apply_origins(dict(upstream, **selected), upstream, {})
+
     def test_validation_requires_distinct_suites_and_same_source(self):
         source = {'commit': 'a' * 40, 'tree': 'b' * 40, 'dirty': False}
         result = {'source_commit': source['commit'], 'source_tree': source['tree'],

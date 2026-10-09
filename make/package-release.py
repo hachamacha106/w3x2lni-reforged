@@ -40,6 +40,8 @@ SUITE_FILES = {
 SOURCE_PREFIXES = ('script/', 'test/', 'make/', 'docs/', 'data/warcraft-current/')
 SOURCE_ROOT_FILES = {'README.md', 'CHANGELOG.md', 'LICENSE.txt', 'config.ini', 'release.json'}
 GENERATED_GITLOG = 'script/share/gitlog.lua'
+# Historical source-build inputs; the portable runtime retains bin/yue.dll.
+BUILD_ONLY_SOURCE_BINARIES = {'make/rcedit.exe', 'make/yue.dll'}
 
 
 def require(condition, message):
@@ -49,6 +51,14 @@ def require(condition, message):
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def portable_source_files(entire_source):
+    # Keep the full Git snapshot/patch; omit only these known build inputs
+    # from the application ZIP. Unknown native files must still be rejected.
+    return {name: content for name, content in entire_source.items()
+            if (name.startswith(SOURCE_PREFIXES) or name in SOURCE_ROOT_FILES)
+            and name != GENERATED_GITLOG and name not in BUILD_ONLY_SOURCE_BINARIES}
 
 
 def runtime_fingerprint(files):
@@ -381,9 +391,7 @@ def main():
     # Replace complete namespaces; no obsolete upstream script can survive.
     files = {name: content for name, content in upstream.items()
              if not name.startswith(SOURCE_PREFIXES) and name not in SOURCE_ROOT_FILES}
-    source_files = {name: content for name, content in entire_source.items()
-                    if (name.startswith(SOURCE_PREFIXES) or name in SOURCE_ROOT_FILES)
-                    and name != GENERATED_GITLOG}
+    source_files = portable_source_files(entire_source)
     require(SOURCE_ROOT_FILES <= set(source_files), 'Release is missing required top-level source files')
     if args.pjass is not None:
         required_notices = {'docs/licenses/pjass-BSD.txt', 'docs/licenses/pjass-AUTHORS.txt',
