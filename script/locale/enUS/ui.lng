@@ -116,3 +116,6 @@ Enter a full path ending in .w3x or .w3m, on one line.
 
 [OPTIMIZE_PARENT_PATH]
 The output folder must already exist.
+
+[OPTIMIZE_PACKED_INPUT]
+Optimize requires a packed .w3x or .w3m map file. Drag the map file into the app. Use Analyze map for LNI folders.

@@ -145,6 +145,20 @@ return function(directory, lni_directory)
         assert(not worker.spool_folder or not fs.exists(worker.spool_folder), 'Worker left its output capture directory')
         return io.load(saved_report)
     end
+    local input_kind = require 'gui.archive_input'
+    assert(not input_kind.packed(fs.path(lni_directory)), 'An LNI folder cannot be optimized as an archive')
+    assert(not input_kind.packed(fs.path(lni_directory) / '.w3x'), 'An LNI marker cannot be optimized as an archive')
+    local type_fixtures = output / 'GUI input kinds'
+    fs.create_directories(type_fixtures)
+    for _, name in ipairs {'_NarutoRPGPlus1.131testv2_editor3', 'Folder.w3x', 'Folder.W3M'} do
+        local folder = type_fixtures / name
+        fs.create_directories(folder)
+        assert(not input_kind.packed(folder), 'A directory was mistaken for a packed map: ' .. name)
+    end
+    assert(not input_kind.packed(type_fixtures / 'Missing.w3x'))
+    assert(input_kind.packed(output / '地图 hráč' / '来源 hráč.w3x'))
+    assert(input_kind.packed(output / '地图 hráč' / '来源 hráč.W3X'), 'Windows map extension case should be accepted')
+    print('PASS native Windows Optimize input kinds: packed map, dotted folders, map-like folders, LNI marker and missing file')
     local before = assert(io.load(output / '地图 hráč' / '来源 hráč.w3x'))
     local report = run('backend/init.lua', {'analyze', lni_directory})
     assert(backend.lastword.type == 'success' and backend.report_text == nil,

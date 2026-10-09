@@ -8,6 +8,7 @@ local ui = require 'gui.new.template'
 local databinding = require 'gui.new.databinding'
 local ev = require 'gui.event'
 local fs = require 'bee.filesystem'
+local archive_input = require 'gui.archive_input'
 
 local root = fs.current_path()
 local worker
@@ -187,6 +188,10 @@ local template = ui.container {
                         end
                         local arguments = {window._mode, window._filename:string()}
                         if window._mode == 'optimize' then
+                            if not archive_input.packed(window._filename) then
+                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_PACKED_INPUT)
+                                return
+                            end
                             -- Choosing an output must not depend on the retained
                             -- runtime's failing native file-picker implementation.
                             local text = data.output.text:match('^%s*(.-)%s*$')
@@ -258,18 +263,17 @@ view, data, element = ui.create(template, {
 function view:on_show()
     update_show()
     data.filename = window._filename:filename():string()
-    data.output.visible = window._mode == 'optimize'
+    data.output.visible = window._mode == 'optimize' and archive_input.packed(window._filename)
     if data.output.visible and output_input ~= window._filename:string() then
         local input = fs.absolute(window._filename)
         local extension = input:extension():string()
-        if extension == '' then extension = '.w3x' end
         data.output.text = (input:parent_path() / (input:stem():string() .. '.optimized' .. extension)):string()
         output_input = window._filename:string()
     end
     if window._mode == 'analyze' then
         data.message = lang.ui.ANALYZE_HINT
     elseif window._mode == 'optimize' then
-        data.message = lang.ui.OPTIMIZE_HINT
+        data.message = data.output.visible and lang.ui.OPTIMIZE_HINT or lang.ui.OPTIMIZE_PACKED_INPUT
     end
 end
 

@@ -1,6 +1,8 @@
 local lang = require 'share.lang'
 local ui = require 'gui.new.template'
 local ev = require 'gui.event'
+local archive_input = require 'gui.archive_input'
+local messagebox = require 'ffi.messagebox'
 
 local template = ui.container {
     style = { FlexGrow = 1, Padding = 4 },
@@ -76,6 +78,10 @@ local template = ui.container {
             style = { MarginTop = 1, MarginBottom = 1, Height = 60 },
             on = {
                 click = function()
+                    if not archive_input.packed(window._filename) then
+                        messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_PACKED_INPUT)
+                        return
+                    end
                     window._mode = 'optimize'
                     window:set_theme('Optimize', '#B25C9B')
                     window:show_page 'convert'

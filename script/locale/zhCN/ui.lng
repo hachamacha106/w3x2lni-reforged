@@ -115,3 +115,6 @@ Ctrl+A：全选   Ctrl+C：复制所选文本
 
 [OPTIMIZE_PARENT_PATH]
 输出文件夹必须已存在。
+
+[OPTIMIZE_PACKED_INPUT]
+优化需要已打包的 .w3x 或 .w3m 地图文件。请将地图文件拖入应用；LNI 文件夹可使用“分析地图”。

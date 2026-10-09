@@ -561,7 +561,7 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
             filename = {focus = function() observed.focus = 'filename' end},
         }
     end
-    ui.createEx = function() return {} end
+    ui.createEx = function() return {setvisible = function() end} end
     local window = app.window
     window._filename, window._color = path(root .. '/Maps with spaces/input.w3x'), '#00ADD9'
     observed.sources[window._filename:string()] = true
@@ -614,8 +614,10 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
         ['gui.event'] = {on = function(_, listener) observed.events[#observed.events + 1] = listener end},
         ['bee.filesystem'] = {path = path, current_path = function() return path(root .. '/script') end,
             absolute = function(value)
+                observed.absolute_calls = (observed.absolute_calls or 0) + 1
                 return value:is_absolute() and value or path(root .. '/script/' .. value:string())
             end,
+            is_regular_file = function(value) return observed.sources[value:string()] == true end,
             exists = function(value)
                 if observed.path_failure then error('path validation fixture failure') end
                 local name = value:string()
@@ -626,6 +628,7 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     local environment = setmetatable({window = window, arg = {[0] = root .. '/bin/w3x2lni-lua.exe'},
         require = function(name) return assert(dependencies[name], 'Unmocked action dependency: ' .. name) end},
         {__index = _G})
+    dependencies['gui.archive_input'] = assert(loadfile(root .. '/script/gui/archive_input.lua', 't', environment))()
     local convert = assert(loadfile(root .. '/script/gui/new/page/convert.lua', 't', environment))()
     local conversion_template, conversion_data = captured[1], captured_data[1]
     local function handler(template, title)
@@ -652,7 +655,69 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     local start = assert(handler(conversion_template, labels.START))
     assert(loadfile(root .. '/script/gui/new/page/select.lua', 't', environment))()
     local select_template = captured[2]
-    assert(handler(select_template, labels.ANALYZE_MAP))()
+    local analyze = assert(handler(select_template, labels.ANALYZE_MAP))
+    local optimize = assert(handler(select_template, labels.OPTIMIZE_MAP))
+    local to_lni = assert(handler(select_template, labels.CONVERT_TO .. 'Lni'))
+    assert(rawget(labels, 'OPTIMIZE_PACKED_INPUT'), locale .. ' is missing the packed-input explanation')
+    local original_input = window._filename
+    for _, example in ipairs {
+        {name = root .. '/_NarutoRPGPlus1.131testv2_editor3'},
+        {name = root .. '/Exported folder.w3x'},
+        {name = root .. '/Exported folder/.w3x', regular = true},
+        {name = root .. '/Missing input.w3x'},
+        {name = root .. '/README.txt', regular = true},
+    } do
+        local input = path(example.name)
+        observed.sources[example.name] = example.regular == true or nil
+        window._filename, window._mode, window.page = input, 'analyze', 'select'
+        window._color = '#735FC1'
+        local opens, loops, errors = #observed.opens, observed.loops, #observed.errors
+        local absolute_calls = observed.absolute_calls or 0
+        optimize()
+        equal(window._filename, input, 'Refusing Optimize must preserve the selected input')
+        equal(window._mode, 'analyze', 'Refusing Optimize must not change the selected action')
+        equal(window.page, 'select', 'Refusing Optimize must remain on the selection page')
+        equal(window._color, '#735FC1', 'Refusing Optimize must not change the theme')
+        equal(#observed.errors, errors + 1)
+        equal(observed.errors[#observed.errors][3], labels.OPTIMIZE_PACKED_INPUT)
+        equal(#observed.opens, opens, 'Refusing Optimize must not launch a worker')
+        equal(observed.loops, loops, 'Refusing Optimize must not schedule worker polling')
+
+        -- A forced/stale Optimize page must still reject the source before
+        -- interpreting its output entry or generating a misleading default.
+        window._mode, window.page = 'optimize', 'convert'
+        conversion_data.output.text = ''
+        convert:on_show()
+        assert(not conversion_data.output.visible, 'Unsupported inputs must hide the output field')
+        equal(conversion_data.message, labels.OPTIMIZE_PACKED_INPUT)
+        equal(conversion_data.output.text, '', 'Unsupported input received a malformed output default')
+        equal(observed.absolute_calls or 0, absolute_calls, 'Unsupported input must not construct an output path')
+        start()
+        equal(#observed.opens, opens, 'A forced Optimize page must reject unsupported inputs before spawning')
+        equal(observed.loops, loops)
+        equal(#observed.errors, errors + 2)
+        equal(observed.errors[#observed.errors][3], labels.OPTIMIZE_PACKED_INPUT,
+            'Input refusal must take priority over the empty output path')
+        equal(conversion_data.output.text, '')
+        equal(window._filename, input)
+
+        -- The guard belongs only to archive optimization. The existing
+        -- Analyze and conversion choices remain available for LNI projects.
+        analyze()
+        convert:on_show()
+        equal(window._mode, 'analyze'); equal(window.page, 'convert')
+        assert(not conversion_data.output.visible)
+        equal(conversion_data.message, labels.ANALYZE_HINT)
+        to_lni()
+        convert:on_show()
+        equal(window._mode, 'lni'); equal(window.page, 'convert')
+        equal(window._filename, input, 'The Optimize refusal must not lose the source for other actions')
+        equal(#observed.opens, opens); equal(observed.loops, loops)
+        assert(not app.loop_quit, 'Unsupported inputs must not close the application')
+    end
+    window._filename = original_input
+    print('PASS ' .. locale .. ' dotted/LNI folders, marker, missing/non-map input refused before Optimize navigation, defaults or workers')
+    analyze()
     convert:on_show()
     equal(window._mode, 'analyze'); equal(window.page, 'convert')
     assert(not conversion_data.output.visible, 'Analyze must hide the output field')
@@ -752,7 +817,7 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     print('PASS ' .. locale .. ' output validation/spawn errors, recovery polling and safe retry reports')
 
     -- Back from a report preserves edits for the same input; a newly selected
-    -- source receives its own default, including legacy .w3m and LNI folders.
+    -- packed source receives its own default; folders/markers stay analysis-only.
     local edited = root .. '/User edits preserved.w3x'
     conversion_data.output.text = edited
     convert:on_show()
@@ -762,13 +827,28 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     window._mode = 'optimize'; convert:on_show()
     equal(conversion_data.output.text, edited, 'Analyze/Optimize toggling must retain edits for the same source')
     window._filename = path(root .. '/地图 hráč/Legacy map.w3m')
+    observed.sources[window._filename:string()] = true
     convert:on_show()
+    assert(conversion_data.output.visible)
     equal(conversion_data.output.text, root .. '/地图 hráč/Legacy map.optimized.w3m')
+    window._filename = path(root .. '/_NarutoRPGPlus1.131testv2_editor.W3X')
+    observed.sources[window._filename:string()] = true
+    optimize()
+    convert:on_show()
+    equal(window._mode, 'optimize'); equal(window.page, 'convert')
+    assert(conversion_data.output.visible, 'Regular uppercase .W3X inputs must allow archive optimization')
+    equal(conversion_data.output.text, root .. '/_NarutoRPGPlus1.131testv2_editor.optimized.W3X',
+        'A packed input must append optimized before the final game-map extension')
     window._filename = path(root .. '/LNI folder')
+    local before_folder = conversion_data.output.text
     convert:on_show()
-    equal(conversion_data.output.text, root .. '/LNI folder.optimized.w3x')
+    assert(not conversion_data.output.visible)
+    equal(conversion_data.message, labels.OPTIMIZE_PACKED_INPUT)
+    equal(conversion_data.output.text, before_folder, 'LNI folders must not generate an archive output')
     window._filename = path('Relative map.w3x')
+    observed.sources[window._filename:string()] = true
     convert:on_show()
+    assert(conversion_data.output.visible)
     equal(conversion_data.output.text, root .. '/script/Relative map.optimized.w3x')
     window._filename = input_before_drop
     convert:on_show()
