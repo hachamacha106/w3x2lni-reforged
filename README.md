@@ -1,17 +1,14 @@
 # W3x2lni Reforged
 
-> Development for **1.1.0** improves the conversion interface, adds report-only
-> pjass checks and a verified StormLib/zlib build path. This source candidate
-> requires successful Actions and manual editor/game acceptance before release.
-> See [1.1 candidate notes](docs/releases/1.1.0.md).
-
+**Latest release: [1.1.0](https://github.com/hachamacha106/w3x2lni-reforged/releases/tag/v1.1.0).**
+See the [release notes](docs/releases/1.1.0.md) for changes and compatibility details.
 
 **A community fork of [sumneko/w3x2lni](https://github.com/sumneko/w3x2lni), updated for modern Warcraft III map development and distribution.**
 
 Convert Warcraft III maps between editable text projects, World Editor object
-data, and optimized SLK maps. W3x2lni Reforged keeps the original GUI and command
-line workflows, adds support for current map formats and game data, and improves
-conversion reports.
+data, and optimized SLK maps. W3x2lni Reforged provides Windows GUI and command
+line workflows, supports current map formats and game data, and reports
+conversion diagnostics.
 
 [Downloads](https://github.com/hachamacha106/w3x2lni-reforged/releases)
 · [Report a bug](https://github.com/hachamacha106/w3x2lni-reforged/issues)
@@ -31,13 +28,13 @@ editor-only information, which cannot be restored by converting the result back.
 
 ## Download and run
 
-1. Open [Releases](https://github.com/hachamacha106/w3x2lni-reforged/releases) and
-   download the portable Windows package. For version 1.0, the asset is named
-   **`w3x2lni-reforged-1.0.0-windows-x86.zip`**.
+1. Open the [1.1.0 release](https://github.com/hachamacha106/w3x2lni-reforged/releases/tag/v1.1.0)
+   and download **`w3x2lni-reforged-1.1.0-windows-x86.zip`** from **Assets**.
 2. Extract the entire ZIP into a new folder. Keep `bin`, `script`, and `data`
    alongside the executables.
 3. Open **`w3x2lni.exe`**, drag in a `.w3x` / `.w3m` map or LNI project, and choose
-   **LNI**, **OBJ**, or **SLK**.
+   **To LNI**, **To OBJ**, or **To SLK**. Review the settings and click **Start**.
+   Use **Change format** to return to format selection.
 4. Review the conversion report. Resize or maximize the window to give the report
    more space. Select text and press **Ctrl+C**, or use **Copy all** for the full
    report.
@@ -65,7 +62,27 @@ conversion command. `w2l.exe config` shows the active settings; for example,
 `w2l.exe config slk.confused=true` enables JASS obfuscation when JASS optimization
 is enabled. `w2l.exe log` displays the last conversion report.
 
-## What's included in 1.0
+## What's new in 1.1
+
+- **Readable conversion interface:** a high-contrast dark theme, clearer format
+  selection, native checkboxes, Space/Enter activation, and **Change format**
+  navigation. Controls are disabled while conversion runs.
+- **Independent JASS verification:** pjass checks `war3map.j` before and after
+  conversion against `common.j` and `blizzard.j` from the selected dataset.
+  Results appear in the report without blocking output or changing the
+  conversion exit status. Lua maps skip this check.
+- **Verified native update:** Windows x86 Unicode StormLib **9.40**, built with
+  static zlib **1.3.2**, with checks for its ABI and build provenance.
+- **Archive error handling:** archive creation, writes, finishing, compaction,
+  and closing are checked for failures.
+- **Expanded release checks:** 16 compatibility suites and packaged Windows
+  execution, including real pjass and native archive regression checks.
+
+pjass reports **Passed**, **Failed**, **Unavailable**, or **Skipped**. A syntax
+and declaration check does not establish gameplay correctness; test converted
+maps in the intended World Editor and Warcraft III version.
+
+## Map compatibility and conversion
 
 - **Modern map information:** W3I format 39 handling, descriptive `w3i.ini`
   fields, and corrected fog, weather, minimap color, and loading-screen HUD data.
@@ -79,19 +96,22 @@ is enabled. `w2l.exe log` displays the last conversion report.
 - **Usable reports:** resizable windows and wrapped, scrollable, selectable
   reports with a full-report copy button.
 - **Verified packaging:** per-file checksums, source and runtime provenance,
-  compatibility tests run from the extracted release candidate, and a Windows
+  compatibility tests run from the extracted release package, and a Windows
   CLI smoke-test gate before a release draft is created.
 
 The development map fixture was saved by **Warcraft III 3.0.1.24342**, using
-**W3I format 39**. The compatibility suite includes 14 test groups and eight
-conversion paths for that fixture. This establishes coverage for the tested
-formats and sample; custom editor extensions and individual maps can require
-additional testing. Read the [compatibility notes](docs/en-us/current-warcraft.md)
+**W3I format 39**. Release validation runs 16 compatibility suites on Linux
+and exercises the packaged CLI on Windows. The map fixture covers eight
+conversion paths. These checks establish coverage for the tested formats and
+samples; custom editor extensions and individual maps can require additional
+testing. Read the [compatibility notes](docs/en-us/current-warcraft.md)
 for the data provenance, test scope, and remaining limits.
 
-The 1.0 Windows package reuses the 22 native executables and DLLs from the
-official upstream **2.7.3** release. The updated converter and UI are delivered
-as Lua scripts. These are not newly compiled Windows binaries.
+The 1.1 Windows package retains 21 native executables and DLLs byte-for-byte
+from the official upstream **2.7.3** release, replaces only `stormlib.dll` with
+the verified build, and adds the checksum-pinned pjass helper. CascLib and the
+other original runtime components are retained. Converter and UI updates are
+Lua scripts. The package includes checksums and source/build provenance.
 
 ## Maintaining this project
 
@@ -102,6 +122,7 @@ It covers branching, CI checks, pinned submodules, version updates, and draft re
 
 - [Current Warcraft III support and game-data setup](docs/en-us/current-warcraft.md)
 - [W3I field names and values](docs/en-us/w3i-fields.md)
+- [W3x2lni Reforged 1.1 release notes](docs/releases/1.1.0.md)
 - [W3x2lni Reforged 1.0 release notes](docs/releases/1.0.0.md)
 - [Developer setup and release process](docs/en-us/reforged-release.md)
 - [Original English documentation](https://sumneko.github.io/w3x2lni/#/en-us/)
@@ -122,7 +143,11 @@ W3x2lni was created by **sumneko**, with the original frontend by
 **actboy168**. This fork is maintained by
 [hachamacha106](https://github.com/hachamacha106).
 
+Research and verification ideas from **devoltzz / Devo's Map Doctor** are
+credited alongside **pjass**, **StormLib**, **zlib**, and the original dependency
+projects in [Credits and runtime provenance](docs/en-us/credits.md).
+
 The project retains its upstream [GNU GPL v3 license](LICENSE.txt).
-[Credits and runtime provenance](docs/en-us/credits.md) identify the original
-project and dependencies. Warcraft III and its game data belong to Blizzard
-Entertainment; this is an independent community project.
+Dependency notices are included in [docs/licenses](docs/licenses). Warcraft III
+and its game data belong to Blizzard Entertainment; this is an independent
+community project.
