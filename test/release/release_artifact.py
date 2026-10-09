@@ -177,6 +177,13 @@ def validate_windows_report(path, archive_hash, expected_version=None, expected_
         assert set(live.get('constants_queried', [])) == {
             'SFileMpqNumberOfFiles', 'SFileMpqFlags', 'SFileInfoLocale', 'SFileInfoFileIndex',
             'SFileInfoByteOffset', 'SFileInfoFileTime', 'SFileInfoFileSize', 'SFileInfoCompressedSize', 'SFileInfoFlags'}
+        gui = report.get('gui_archive_actions', {})
+        assert gui.get('status') == 'passed' and gui.get('headless') is True, 'Missing native GUI archive adapter/worker evidence'
+        assert gui.get('interactive_dialog_tested') is False, 'Headless checks cannot claim interactive dialog testing'
+        assert all(gui.get(key) is True for key in (
+            'dialog_abi_verified', 'dialog_unicode_buffers_verified', 'dialog_cancel_and_errors_verified',
+            'lni_folder_analyzed', 'lni_marker_analyzed', 'lni_project_unchanged',
+            'optimization_worker_verified', 'failure_reports_verified', 'failure_recovery_verified')), 'Incomplete GUI archive regression evidence'
         lossless = report.get('lossless_archive', {})
         assert lossless.get('status') == 'passed', 'Missing native lossless archive checks'
         assert all(lossless.get(key) is True for key in (

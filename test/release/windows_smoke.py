@@ -86,7 +86,7 @@ def main():
         "status": "running", "started_utc": datetime.now(timezone.utc).isoformat(),
         "archive_sha256": sha256(archive.read_bytes()),
         "version": release["version"], "platform": "Windows", "native_windows_execution": True,
-        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS",
+        "scope": "Packaged x86 interpreter/modules, pjass and CLI; OBJ, LNI, LNI-to-OBJ and SLK; native MPQ and report-only invalid JASS; headless GUI archive adapters/workers",
         "gui_tested": False, "system_clipboard_tested": False, "game_tested": False,
         "world_editor_tested": False, "casc_storage_extraction_tested": False,
         "archive_unchanged": False, "packaged_inputs_unchanged": False,
@@ -240,6 +240,20 @@ def main():
         lossless_input = output / "地图 hráč" / "来源 hráč.w3x"
         lossless_output = output / "地图 hráč" / "CLI 优化.w3x"
         lossless_before = lossless_input.read_bytes()
+        lni_before = {path.relative_to(lni).as_posix(): sha256(path.read_bytes())
+                      for path in lni.rglob('*') if path.is_file()}
+        gui_stdout = native("gui-archive-actions", "gui-archive-actions", output, lni)
+        assert b"GUI_ARCHIVE_ACTIONS|passed" in gui_stdout, "Missing native GUI worker evidence"
+        assert lni_before == {path.relative_to(lni).as_posix(): sha256(path.read_bytes())
+                              for path in lni.rglob('*') if path.is_file()}, "Analyze modified the LNI project"
+        assert lossless_input.read_bytes() == lossless_before, "GUI worker changed its source map"
+        report["gui_archive_actions"] = {
+            "status": "passed", "headless": True, "interactive_dialog_tested": False,
+            "dialog_abi_verified": True, "dialog_unicode_buffers_verified": True,
+            "dialog_cancel_and_errors_verified": True, "lni_folder_analyzed": True,
+            "lni_marker_analyzed": True, "lni_project_unchanged": True,
+            "optimization_worker_verified": True, "failure_reports_verified": True, "failure_recovery_verified": True,
+        }
         log = root / "log/report.log"
         if log.exists():
             log.unlink()

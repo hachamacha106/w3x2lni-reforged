@@ -119,6 +119,11 @@ if action == 'abi' then
     return
 end
 
+if action == 'gui-archive-actions' then
+    assert(loadfile(root .. '/test/release/windows_gui_actions.lua'))()(assert(arg[3]), assert(arg[4]))
+    return
+end
+
 if action == 'lossless' or action == 'lossless-output' then
     assert(loadfile(root .. '/test/release/windows_lossless.lua'))()(assert(arg[3]),
         action == 'lossless' and 'run' or 'verify-cli')

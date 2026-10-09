@@ -1,10 +1,9 @@
-local gui = require 'yue.gui'
+local save_dialog = require 'ffi.save_file_dialog'
 local backend = require 'gui.backend'
 local timer = require 'gui.timer'
 local messagebox = require 'ffi.messagebox'
 local lang = require 'share.lang'
 local config = require 'share.config'
-local push_error = require 'gui.push_error'
 local ui = require 'gui.new.template'
 local databinding = require 'gui.new.databinding'
 local ev = require 'gui.event'
@@ -12,6 +11,8 @@ local fs = require 'bee.filesystem'
 
 local root = fs.current_path()
 local worker
+local recovering = false
+local recovery_error
 local view
 local data
 local element
@@ -27,12 +28,11 @@ end
 local function update_show()
     data.report.visible = not not backend.lastword
     data.progress.visible = (not not worker) and not data.report.visible
-    data.cancel.visible = worker and not worker.exited and not backend.lastword
+    data.cancel.visible = worker and not worker.exited and (recovering or not backend.lastword)
         and (window._mode == 'analyze' or window._mode == 'optimize') or false
 end
 
-local function update()
-    worker:update()
+local function update_result()
     data.message = backend.message
     if backend.lastword then
         data.report.text = backend.lastword.content
@@ -44,14 +44,14 @@ local function update()
             data.report.color = window._color
         end
     end
-    data.progress.value = backend.progress / 100
+    data.progress.value = (backend.progress or 0) / 100
     update_show()
+end
+
+local function update()
+    worker:update()
+    update_result()
     if worker.exited then
-        if #worker.error > 0 then
-            push_error(worker.error)
-            worker.error = ''
-            return 0, 1
-        end
         if worker.exit_code == 0 then
             return 1000, 0
         else
@@ -60,16 +60,31 @@ local function update()
     end
 end
 
+local function start_recovery()
+    local ok, err = xpcall(function() worker:recover(recovery_error) end, debug.traceback)
+    if ok then recovery_error = nil
+    else backend:failure(recovery_error .. '\n' .. err) end
+    return ok
+end
+
 local function delayedtask(t)
-    local ok, r, code = xpcall(update, debug.traceback)
-    if not ok then
-        t:remove()
-        messagebox(lang.ui.ERROR, '%s', r)
+    if recovering then
+        if recovery_error and not start_recovery() then update_result(); return end
+        local ok, finished = xpcall(function() return worker:drain_failure() end, debug.traceback)
+        if not ok then backend:failure(finished)
+        elseif finished then recovering = false; t:remove() end
+        update_result()
         return
     end
-    if r then
-        t:remove()
+    local ok, r, code = xpcall(update, debug.traceback)
+    if not ok then
+        recovering = true
+        recovery_error = r
+        start_recovery()
+        update_result()
+        return
     end
+    if r then t:remove() end
 end
 
 local template = ui.container {
@@ -144,39 +159,44 @@ local template = ui.container {
             },
             on = {
                 click = function ()
-                    if worker and not worker.exited then
-                        return
-                    end
-                    local arguments = {window._mode, window._filename:string()}
-                    if window._mode == 'optimize' then
-                        local dialog = gui.FileSaveDialog.create()
-                        dialog:settitle(lang.ui.OPTIMIZE_SAVE)
-                        dialog:setfilename(window._filename:stem():string() .. '.optimized' .. window._filename:extension():string())
-                        dialog:setfolder(window._filename:parent_path():string())
-                        dialog:setfilters({{description = 'Warcraft III maps', extensions = {'w3x', 'w3m'}}})
-                        if not dialog:runforwindow(window._window) then
+                    local ok, err = xpcall(function()
+                        if worker and not worker.exited then
                             return
                         end
-                        arguments[3] = dialog:getresult()
-                        if fs.exists(fs.path(arguments[3])) then
-                            messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_NEW_PATH)
-                            return
+                        local arguments = {window._mode, window._filename:string()}
+                        if window._mode == 'optimize' then
+                            local destination, dialog_error = save_dialog {
+                                title = lang.ui.OPTIMIZE_SAVE,
+                                filename = window._filename:stem():string() .. '.optimized' .. window._filename:extension():string(),
+                                folder = window._filename:parent_path():string(),
+                            }
+                            if dialog_error then error(dialog_error, 0) end
+                            if not destination then return end
+                            arguments[3] = destination
+                            if fs.exists(fs.path(arguments[3])) then
+                                messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_NEW_PATH)
+                                return
+                            end
                         end
+                        recovering, recovery_error = false, nil
+                        backend:init(getexe(), fs.current_path())
+                        local open_error
+                        worker, open_error = backend:open('backend\\init.lua', arguments)
+                        if not worker then error(open_error or 'The worker process could not be started.', 0) end
+                        backend.message = lang.ui.INIT
+                        backend.progress = 0
+                        data.progress.value = backend.progress / 100
+                        data.progress.visible = true
+                        data.report.visible = false
+                        data.cancel.visible = window._mode == 'analyze' or window._mode == 'optimize'
+                        timer.loop(100, delayedtask)
+                        window._worker = worker
+                    end, debug.traceback)
+                    if not ok then
+                        backend:clean()
+                        backend:failure(err)
+                        update_result()
                     end
-                    backend:init(getexe(), fs.current_path())
-                    worker = backend:open('backend\\init.lua', arguments)
-                    if not worker then
-                        messagebox(lang.ui.ERROR, '%s', lang.ui.FAILED)
-                        return
-                    end
-                    backend.message = lang.ui.INIT
-                    backend.progress = 0
-                    data.progress.value = backend.progress / 100
-                    data.progress.visible = true
-                    data.report.visible = false
-                    data.cancel.visible = window._mode == 'analyze' or window._mode == 'optimize'
-                    timer.loop(100, delayedtask)
-                    window._worker = worker
                 end,
             },
         },
@@ -378,6 +398,7 @@ ev.on('update theme', function(color, title)
     data.message = ''
     data.cancel.visible = false
     worker = nil
+    recovering, recovery_error = false, nil
 
     configData.proxy.theme = color
 

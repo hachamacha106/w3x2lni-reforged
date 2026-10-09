@@ -43,7 +43,11 @@ def fixture():
             'create_offsets_verified':12,'find_offsets_verified':10,'exports_verified':len(abi['exports']),
             'constants_queried':[name for name in abi['constants'] if name!='MPQ_COMPRESSION_ZLIB'],
             'native_file_info_verified':True},
-        'lossless_archive':{'status':'passed','source_unchanged':True,'decoded_payloads_equal':True,
+        'gui_archive_actions':{'status':'passed','headless':True,'interactive_dialog_tested':False,
+            'dialog_abi_verified':True,'dialog_unicode_buffers_verified':True,'dialog_cancel_and_errors_verified':True,
+            'lni_folder_analyzed':True,'lni_marker_analyzed':True,'lni_project_unchanged':True,
+            'optimization_worker_verified':True,'failure_reports_verified':True,'failure_recovery_verified':True},
+        'lossless_archive':{'status':'passed' ,'source_unchanged':True,'decoded_payloads_equal':True,
             'bookkeeping_equal':True,'outer_header_equal':True,'unicode_paths_tested':True,
             'unknown_editor_hd_data_preserved':True,'existing_output_refused':True,'output_race_preserved':True,
             'cancellation_cleaned_up':True,'cli_cancellation_verified':True,'attempted_sector_sizes':[512,4096,65536],
@@ -67,7 +71,7 @@ class WindowsReportTests(unittest.TestCase):
     def test_missing_groups_and_other_archive_or_version_rejected(self):
         original,files=fixture()
         mutations=[lambda r:r.pop('pjass_verification'),lambda r:r.pop('native_abi_verification'),
-                   lambda r:r.pop('lossless_archive'),lambda r:r.update(version='1.0.0'),
+                   lambda r:r.pop('lossless_archive'),lambda r:r.pop('gui_archive_actions'),lambda r:r.update(version='1.0.0'),
                    lambda r:r.update(archive_sha256='d'*64)]
         for mutation in mutations:
             report=copy.deepcopy(original);mutation(report)
@@ -83,6 +87,16 @@ class WindowsReportTests(unittest.TestCase):
         for mutation in mutations:
             report=copy.deepcopy(original);mutation(report)
             with self.subTest(report=report),self.assertRaises(AssertionError):self.verify(report,files)
+
+    def test_gui_worker_checks_cannot_be_skipped_or_claim_interactive_testing(self):
+        original,files=fixture()
+        for key in ('dialog_abi_verified','dialog_unicode_buffers_verified','dialog_cancel_and_errors_verified',
+                    'lni_folder_analyzed','lni_marker_analyzed','lni_project_unchanged',
+                    'optimization_worker_verified','failure_reports_verified','failure_recovery_verified','headless'):
+            report=copy.deepcopy(original);report['gui_archive_actions'][key]=False
+            with self.subTest(key=key),self.assertRaises(AssertionError):self.verify(report,files)
+        report=copy.deepcopy(original);report['gui_archive_actions']['interactive_dialog_tested']=True
+        with self.assertRaises(AssertionError):self.verify(report,files)
 
     def test_dll_abi_and_preservation_evidence_bound_to_package(self):
         original,files=fixture()

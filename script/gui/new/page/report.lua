@@ -1,5 +1,6 @@
 local fs = require 'bee.filesystem'
 local gui = require 'yue.gui'
+local backend = require 'gui.backend'
 local lang = require 'share.lang'
 local ui = require 'gui.new.template'
 local ev = require 'gui.event'
@@ -81,7 +82,8 @@ ev.on('update theme', function()
 end)
 
 function view:on_show()
-    local text = io.load(root:parent_path() / 'log' / 'report.log') or ''
+    local text = backend.report_text
+    if text == nil then text = io.load(root:parent_path() / 'log' / 'report.log') or '' end
     data.report.text = text
     data.theme = window._color
     element.report_text:selectrange(0, 0)
