@@ -1,6 +1,23 @@
 local process = require 'bee.subprocess'
 local proto = require 'share.protocol'
 local lang = require 'share.lang'
+local fs = require 'bee.filesystem'
+local cancel_sequence = 0
+
+local function cleanup_cancel(folder, marker)
+    if marker then pcall(fs.remove, marker) end
+    if folder then pcall(fs.remove, folder) end -- Only an owned, empty directory.
+end
+
+local function cancel_folder()
+    local base = fs.absolute(fs.temp_directory_path() / 'w2l-cancel-parent'):parent_path()
+    for _ = 1, 100 do
+        cancel_sequence = cancel_sequence + 1
+        local folder = base / ('w2l-cancel-%d-%d-%d'):format(process.get_id(), os.time(), cancel_sequence)
+        if fs.create_directory(folder) then return folder, folder / 'cancel' end
+    end
+    error('Cannot create an operation cancellation directory')
+end
 
 local backend = {}
 backend.message = ''
@@ -10,6 +27,19 @@ backend.report = {}
 
 local mt = {}
 mt.__index = mt
+
+-- New archive actions cancel cooperatively so the worker can clean candidates.
+function mt:cancel()
+    if self.exited or not self.cancel_file then return false, 'This worker cannot be cancelled' end
+    if self.cancel_requested then return true end
+    local file, err = io.open(self.cancel_file:string(), 'wb')
+    if not file then return false, err end
+    local written, write_error = file:write('cancel')
+    local closed, close_error = file:close()
+    if not written or not closed then return false, write_error or close_error end
+    self.cancel_requested = true
+    return true
+end
 
 function mt:unpack_out(bytes)
     while true do
@@ -76,6 +106,7 @@ function mt:update_pipe()
         end
         self.exit_code = self.process:wait()
         self.process:kill()
+        cleanup_cancel(self.cancel_folder, self.cancel_file)
         return true
     end
     return false
@@ -154,6 +185,16 @@ function backend:clean()
 end
 
 function backend:open(entry, commandline)
+    local folder, marker
+    if commandline[1] == 'analyze' or commandline[1] == 'optimize' then
+        local ok
+        ok, folder, marker = pcall(cancel_folder)
+        if not ok then return nil, folder end
+        local forwarded = {}
+        for i, value in ipairs(commandline) do forwarded[i] = value end
+        forwarded[#forwarded + 1] = '-cancel-file=' .. marker:string()
+        commandline = forwarded
+    end
     local p = process.spawn {
         self.application:string(),
         '-E',
@@ -166,6 +207,7 @@ function backend:open(entry, commandline)
         cwd = self.currentdir:string(),
     }
     if not p then
+        cleanup_cancel(folder, marker)
         return
     end
     self:clean()
@@ -176,6 +218,7 @@ function backend:open(entry, commandline)
         output = {},
         error = '',
         proto_s = {},
+        cancel_folder = folder, cancel_file = marker,
     }, mt)
 end
 

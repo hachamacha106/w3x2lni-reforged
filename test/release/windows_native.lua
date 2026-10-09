@@ -65,6 +65,152 @@ if action == 'lni' then
     return
 end
 
+if action == 'abi' then
+    local storm = require 'ffi.stormlib'
+    ffi.cdef[[
+        void* __stdcall GetProcAddress(uintptr_t module, const char* name);
+        struct W2L_SMOKE_FIND_DATA {
+            char cFileName[260];
+            char* szPlainName;
+            uint32_t dwHashIndex, dwBlockIndex, dwFileSize, dwFileFlags, dwCompSize;
+            uint32_t dwFileTimeLo, dwFileTimeHi, lcLocale;
+        };
+    ]]
+    assert(ffi.sizeof('struct SFILE_CREATE_MPQ') == tonumber(arg[8]), 'Create layout differs from compiled ABI')
+    assert(ffi.sizeof('struct W2L_SMOKE_FIND_DATA') == tonumber(arg[9]), 'Find layout differs from compiled ABI')
+    assert(ffi.sizeof('void*') == tonumber(arg[10]) and ffi.sizeof('uint32_t') == tonumber(arg[11]),
+        'Native FFI widths differ from compiled ABI')
+    for _, spec in ipairs {{arg[6], 'struct SFILE_CREATE_MPQ'}, {arg[7], 'struct W2L_SMOKE_FIND_DATA'}} do
+        for field, offset in spec[1]:gmatch('([%a_][%w_]*)=(%d+)') do
+            assert(ffi.offsetof(spec[2], field) == tonumber(offset), 'FFI offset differs from compiled ABI: ' .. field)
+        end
+    end
+    local module = (require 'ffi.getmodule') 'stormlib'
+    assert(module ~= 0, 'Packaged StormLib was not loaded')
+    local exports = 0
+    for name in assert(arg[4]):gmatch('[^,]+') do
+        assert(ffi.C.GetProcAddress(module, name) ~= nil, 'Packaged DLL export is missing: ' .. name)
+        exports = exports + 1
+    end
+    local constants = {}
+    for name, value in assert(arg[5]):gmatch('([%a_][%w_]*)=(%d+)') do constants[name] = tonumber(value) end
+    local dll = ffi.load('stormlib')
+    local map = assert(storm.open(fs.path(assert(arg[3])), true))
+    local script = assert(map:load_file('war3map.j'))
+    local file = assert(map:open_file('war3map.j'))
+    local function query(handle, kind, ctype)
+        local value = ffi.new(ctype .. '[1]')
+        assert(dll.SFileGetFileInfo(handle, assert(constants[kind]), value, ffi.sizeof(value), nil),
+            'Compiled information ID failed against the packaged DLL: ' .. kind)
+        return value[0]
+    end
+    local count = query(map.handle, 'SFileMpqNumberOfFiles', 'uint32_t')
+    assert(count == map:number_of_files() and count > 0, 'Native file count differs from the runtime binding')
+    query(map.handle, 'SFileMpqFlags', 'uint32_t')
+    assert(query(file.handle, 'SFileInfoLocale', 'uint32_t') == 0)
+    assert(query(file.handle, 'SFileInfoFileIndex', 'uint32_t') < count)
+    assert(query(file.handle, 'SFileInfoByteOffset', 'uint64_t') > 0)
+    query(file.handle, 'SFileInfoFileTime', 'uint64_t')
+    assert(query(file.handle, 'SFileInfoFileSize', 'uint32_t') == #script)
+    assert(query(file.handle, 'SFileInfoCompressedSize', 'uint32_t') > 0)
+    assert(query(file.handle, 'SFileInfoFlags', 'uint32_t') & 0x80000000 ~= 0)
+    assert(file:close()); assert(map:close())
+    print('PASS live packaged FFI widths/offsets, ' .. exports .. ' exports and compiled file-info constants')
+    return
+end
+
+if action == 'lossless' or action == 'lossless-output' then
+    assert(loadfile(root .. '/test/release/windows_lossless.lua'))()(assert(arg[3]),
+        action == 'lossless' and 'run' or 'verify-cli')
+    return
+end
+
+-- Exercise the packaged checker through the shared backend adapter, with real
+-- target declarations. Record stable, machine-readable case summaries on stdout.
+if action == 'pjass' then
+    local checker = require 'backend.jass_verify'
+    local factory = require 'backend.sandbox_core'
+    local function verify_case(name, dataset, script, script_type, expected)
+        local w2l = factory()
+        w2l:set_setting {mode = 'obj', data = dataset, data_meta = '${DATA}',
+            data_ui = '${DATA}', data_wes = '${DATA}'}
+        local result = checker.verify(w2l, function(member)
+            if member == (script_type == 'Lua' and 'war3map.lua' or 'war3map.j') then return script end
+        end, name, {script_type = script_type})
+        assert(result.status == expected, name .. ': ' .. result.status .. '\n'
+            .. result.raw_output .. table.concat(result.diagnostics, '\n'))
+        if expected == 'Failed' then
+            assert(#result.diagnostics > 0 and result.raw_output ~= '', 'Missing real pjass failure diagnostics')
+        elseif expected == 'Passed' then
+            assert(result.target.exit_code == 0 and result.target.ignored_errors == 0)
+        end
+        print(('PJASS_CASE|%s|%s|%s|%d|%d|%s|%d'):format(name, result.status, dataset,
+            #result.diagnostics, #result.raw_output, result.target and tostring(result.target.exit_code) or 'skipped',
+            result.target and result.target.ignored_errors or 0))
+        if result.raw_output ~= '' then print(result.raw_output) end
+        return result
+    end
+    local valid = '\239\187\191function main takes nothing returns nothing\r\n'
+        .. '    call BJDebugMsg("Packaged validation")\r\nendfunction\r\n'
+    verify_case('current-valid', 'warcraft-current', valid, 'JASS', 'Passed')
+    verify_case('legacy-127-valid', 'enUS-1.27.1', valid, 'JASS', 'Passed')
+    verify_case('legacy-124-valid', 'zhCN-1.24.4', valid, 'JASS', 'Passed')
+    verify_case('invalid-syntax', 'warcraft-current',
+        'function main takes nothing returns nothing\n    local integer n =\nendfunction\n', 'JASS', 'Failed')
+    verify_case('invalid-type', 'warcraft-current',
+        'function main takes nothing returns nothing\n    call SetMapName(42)\nendfunction\n', 'JASS', 'Failed')
+    local suppressed = verify_case('suppressed-errors', 'warcraft-current',
+        '//# +nosemanticerror\nfunction main takes nothing returns nothing\n    call MissingFunction()\nendfunction\n',
+        'JASS', 'Failed')
+    assert(suppressed.target.exit_code == 0 and suppressed.target.ignored_errors > 0,
+        'Source-suppressed failures must not be accepted as passes')
+    local modern = 'function main takes nothing returns nothing\n    call BlzResetUnitTalents(null)\nendfunction\n'
+    verify_case('modern-current', 'warcraft-current', modern, 'JASS', 'Passed')
+    verify_case('modern-legacy-mismatch', 'enUS-1.27.1', modern, 'JASS', 'Failed')
+    verify_case('lua-skipped', 'warcraft-current', 'function main() end\n', 'Lua', 'Skipped')
+    local storm = require 'ffi.stormlib'
+    local fixture = assert(storm.open(fs.path(assert(arg[3])), true), 'Cannot open the current-editor fixture')
+    local script = assert(fixture:load_file('war3map.j'))
+    assert(fixture:close())
+    verify_case('current-fixture', 'warcraft-current', script, 'JASS', 'Passed')
+    print('PASS packaged pjass: current/legacy datasets, syntax/type failures, ignored errors and Lua skip')
+    return
+end
+
+if action == 'pjass-fixture' then
+    local source, destination = fs.path(assert(arg[3])), fs.path(assert(arg[4]))
+    assert(source ~= destination and not fs.exists(destination), 'Use a fresh derived fixture path')
+    assert(io.save(destination, assert(read_path(source:string()))))
+    local storm = require 'ffi.stormlib'
+    local map = assert(storm.open(destination, false), 'Cannot open the disposable pjass fixture')
+    assert(map:save_file('war3map.j',
+        'function main takes nothing returns nothing\r\n    local integer n =\r\nendfunction\r\n'
+        .. 'function config takes nothing returns nothing\r\nendfunction\r\n'))
+    assert(map:close())
+    print('PASS disposable invalid-script fixture created without modifying the packaged map')
+    return
+end
+
+if action == 'pjass-output' then
+    local storm = require 'ffi.stormlib'
+    local before = assert(storm.open(fs.path(assert(arg[3])), true), 'Cannot open invalid-script input')
+    local after = assert(storm.open(fs.path(assert(arg[4])), true), 'Report-only conversion did not save an MPQ')
+    local original = assert(before:load_file('war3map.j'))
+    local converted = assert(after:load_file('war3map.j'))
+    local function without_stamp(text) return (text:gsub('//W3x2lni Data:[^\r\n]*\r?\n', '')) end
+    assert(without_stamp(original) == without_stamp(converted), 'pjass changed or discarded the invalid script')
+    assert(before:close())
+    assert(after:close())
+    local w2l = (require 'backend.sandbox_core')()
+    w2l:set_setting {mode = 'obj', data = 'warcraft-current'}
+    local result = (require 'backend.jass_verify').verify(w2l,
+        function(name) if name == 'war3map.j' then return converted end end, 'Saved output', {script_type = 'JASS'})
+    assert(result.status == 'Failed' and #result.diagnostics > 0 and result.raw_output ~= '')
+    print(result.raw_output)
+    print('PASS native output exists and invalid-script bytes were preserved despite failed pjass verification')
+    return
+end
+
 assert(action == 'archive', 'Unknown Windows smoke action')
 local storm = require 'ffi.stormlib'
 local original = assert(storm.open(fs.path(assert(arg[3])), true), 'Cannot open original MPQ')

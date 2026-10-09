@@ -16,8 +16,43 @@ env:
   PYTHONDONTWRITEBYTECODE: '1'
 
 jobs:
+  native-build:
+    name: Verified Windows x86 StormLib and pjass
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact source and pinned native dependencies
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Check native build safeguards
+        run: python -B test/release/test_native_runtime.py
+      - name: Build and probe pinned Win32 Unicode StormLib with static zlib
+        run: python -B make/native_runtime.py build --target windows-x86 --output build/native
+      - name: Obtain the checksum-pinned x86 pjass helper
+        run: python -B make/prepare_pjass.py windows --output build/native/bin/pjass.exe
+      - name: Upload only verified native outputs and evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reforged-native-runtime
+          path: |
+            build/native/bin/stormlib.dll
+            build/native/bin/pjass.exe
+            build/native/manifest.json
+            build/native/abi.json
+            build/native/build.log
+          if-no-files-found: error
+          retention-days: 30
+
   package:
     name: Package and compatibility tests
+    needs: native-build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
@@ -42,6 +77,18 @@ jobs:
         run: python3 -B test/release/release_artifact.py metadata
       - name: Verify committed-source and release-packaging safeguards
         run: python3 -B test/compat/test_package_release.py
+      - name: Download the independently built and verified native artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reforged-native-runtime
+          path: build/native
+          digest-mismatch: error
+      - name: Install Linux checker build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends bison flex
+      - name: Build and test pjass from the pinned release source
+        run: python3 -B make/prepare_pjass.py linux --output build/pjass-linux
       - name: Download the pinned official Windows runtime
         run: |
           mkdir -p build/release
@@ -55,6 +102,8 @@ jobs:
       - name: Produce the initial map-validation fixture
         run: |
           export W2L_TEST_RUNTIME="$PWD/build/compat-runtime"
+          export W2L_PJASS="$PWD/build/pjass-linux/pjass"
+          export W2L_REQUIRE_PJASS=1
           python3 -B test/compat/user_map.py \
             --map test/fixtures/HiTestMapFromWorldEditor.w3x \
             --library "$PWD/build/mpq-runtime/libstorm.so" \
@@ -67,10 +116,15 @@ jobs:
           fi
           python3 -B make/package-release.py \
             --upstream build/upstream-runtime.zip \
+            --native-runtime build/native \
+            --pjass build/native/bin/pjass.exe \
             --output build/candidate.zip \
             --map-validation build/seed-map-validation \
             "${tag_arguments[@]}"
-      - name: Run all 14 suites from the extracted candidate
+      - name: Run all 16 suites from the extracted candidate
+        env:
+          W2L_PJASS: ${{ github.workspace }}/build/pjass-linux/pjass
+          W2L_REQUIRE_PJASS: "1"
         run: |
           python3 -B test/compat/verify_package.py \
             --archive build/candidate.zip \
@@ -89,6 +143,8 @@ jobs:
           fi
           python3 -B make/package-release.py \
             --upstream build/upstream-runtime.zip \
+            --native-runtime build/native \
+            --pjass build/native/bin/pjass.exe \
             --output "build/release/$RELEASE_ASSET" \
             --map-validation build/verified/map-validation \
             --validation build/verified/VALIDATION.json \

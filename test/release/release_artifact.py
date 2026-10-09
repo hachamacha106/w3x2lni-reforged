@@ -10,6 +10,10 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import zipfile
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'make'))
+from runtime_origins import verify_origins, PJASS_RELEASE, PJASS_SHA256
 
 ROOT = Path(__file__).resolve().parents[2]
 UPSTREAM_SHA256 = "58c6523b6d34fea55b6904f40298b24f72367f7d975494cb7dff23cb1241c440"
@@ -104,13 +108,20 @@ def inspect_archive(archive_path, expected_metadata, checksum_path=None, expecte
     verification = json.loads(files["PACKAGE_VERIFICATION.json"])
     assert verification["status"] == "validated", "A candidate cannot be released"
     assert verification["package_runtime_fingerprint"] == info["package_runtime_fingerprint"]
-    assert info["validation"]["extracted_package_suites_passed"] == 14, "Missing compatibility suite gate"
-    assert info["native_runtime"]["rebuilt"] is False, "This release path must retain the official runtime"
+    expected_suites = 16 if tuple(map(int, expected_metadata['version'].split('-')[0].split('.'))) >= (1, 1, 0) else 14
+    assert info["validation"]["extracted_package_suites_passed"] == expected_suites, "Missing compatibility suite gate"
+    verify_origins(files, info)
+    if expected_suites == 16:
+        assert info['native_runtime']['rebuilt'] is True, 'Version 1.1+ requires the verified rebuilt StormLib'
+        assert any(item['path'] == 'bin/pjass.exe' and item['origin'] == 'added'
+                   for item in info['native_runtime']['files']), 'Missing verified pjass helper'
     return files, archive_hash
 
 
-def validate_windows_report(path, archive_hash):
+def validate_windows_report(path, archive_hash, expected_version=None, expected_files=None):
     report = json.loads(Path(path).read_text(encoding="utf-8"))
+    expected_version = expected_version or metadata()["version"]
+    assert report["version"] == expected_version, "Windows tested another release version"
     assert report["status"] == "passed", "Windows smoke tests did not pass"
     assert report["archive_sha256"] == archive_hash, "Windows tested a different release ZIP"
     assert report["archive_unchanged"] and report["packaged_inputs_unchanged"]
@@ -121,6 +132,64 @@ def validate_windows_report(path, archive_hash):
     assert all(item["errors"] == 0 and item["warnings"] == 0 and item["native_contents_verified"]
                for item in conversions), "A native conversion gate failed"
     assert report["steps"] and all(item["exit_code"] == 0 for item in report["steps"])
+    if tuple(map(int, expected_version.split('-')[0].split('.'))) >= (1, 1, 0):
+        assert all(item.get('pjass') == {'before': 'Passed', 'after': 'Passed'} for item in conversions), \
+            'Known-valid native conversions did not pass real pjass'
+        check = report.get('pjass_verification', {})
+        assert check.get('status') == 'passed' and check.get('report_only') is True, 'Missing native pjass evidence'
+        assert check.get('release') == PJASS_RELEASE and check.get('checker_sha256') == PJASS_SHA256, 'Wrong pjass pin'
+        expected = {
+            'current-valid': ('Passed', 'warcraft-current'), 'legacy-127-valid': ('Passed', 'enUS-1.27.1'),
+            'legacy-124-valid': ('Passed', 'zhCN-1.24.4'), 'modern-current': ('Passed', 'warcraft-current'),
+            'current-fixture': ('Passed', 'warcraft-current'), 'invalid-syntax': ('Failed', 'warcraft-current'),
+            'invalid-type': ('Failed', 'warcraft-current'), 'modern-legacy-mismatch': ('Failed', 'enUS-1.27.1'),
+            'suppressed-errors': ('Failed', 'warcraft-current'), 'lua-skipped': ('Skipped', 'warcraft-current'),
+        }
+        cases = check.get('checks', [])
+        assert len(cases) == len(expected) and {item['name']: (item['status'], item['dataset']) for item in cases} == expected, \
+            'Missing or mismatched native pjass cases'
+        for case in cases:
+            if case['status'] == 'Passed':
+                assert case['checker_exit_code'] == 0 and case['ignored_errors'] == 0 and case['raw_output_bytes'] > 0
+            elif case['status'] == 'Failed':
+                assert case['diagnostic_count'] > 0 and case['raw_output_bytes'] > 0
+                assert case['checker_exit_code'] != 0 or case['ignored_errors'] > 0
+            else:
+                assert case['checker_exit_code'] is None and case['raw_output_bytes'] == 0
+        invalid = check.get('report_only_conversion', {})
+        assert invalid.get('errors') == invalid.get('warnings') == 0 and invalid.get('mode') == 'obj'
+        assert invalid.get('pjass') == {'before': 'Failed', 'after': 'Failed'}, 'Failed checks were hidden'
+        assert all(invalid.get(key) is True for key in ('output_exists', 'output_script_preserved', 'input_unchanged')), \
+            'pjass incorrectly blocked or modified otherwise valid conversion output'
+        assert re.fullmatch(r'[0-9a-f]{64}', invalid.get('output_sha256', '')), 'Missing report-only output evidence'
+        assert expected_files is not None, 'Exact packaged ABI and DLL bytes are required'
+        abi = json.loads(expected_files['NATIVE_ABI.json'])
+        live = report.get('native_abi_verification', {})
+        assert live.get('status') == 'passed' and live.get('native_file_info_verified') is True, 'Missing live native ABI check'
+        assert live.get('abi_sha256') == sha256(expected_files['NATIVE_ABI.json'])
+        assert live.get('dll_sha256') == sha256(expected_files['bin/stormlib.dll']), 'Windows queried another DLL'
+        assert live.get('pointer_size') == abi['pointer_size'] == 4 and live.get('dword_size') == abi['dword_size'] == 4
+        assert live.get('create_size') == abi['sizes']['SFILE_CREATE_MPQ'] == 48
+        assert live.get('find_size') == abi['sizes']['SFILE_FIND_DATA'] == 296
+        assert live.get('create_offsets_verified') == len(abi['offsets']['create']) == 12
+        assert live.get('find_offsets_verified') == len(abi['offsets']['find']) == 10
+        assert live.get('exports_verified') == len(abi['exports'])
+        assert set(live.get('constants_queried', [])) == {
+            'SFileMpqNumberOfFiles', 'SFileMpqFlags', 'SFileInfoLocale', 'SFileInfoFileIndex',
+            'SFileInfoByteOffset', 'SFileInfoFileTime', 'SFileInfoFileSize', 'SFileInfoCompressedSize', 'SFileInfoFlags'}
+        lossless = report.get('lossless_archive', {})
+        assert lossless.get('status') == 'passed', 'Missing native lossless archive checks'
+        assert all(lossless.get(key) is True for key in (
+            'source_unchanged', 'decoded_payloads_equal', 'bookkeeping_equal', 'outer_header_equal',
+            'unicode_paths_tested', 'unknown_editor_hd_data_preserved', 'existing_output_refused',
+            'output_race_preserved', 'cancellation_cleaned_up', 'cli_cancellation_verified')), 'Incomplete lossless preservation/safety evidence'
+        assert lossless.get('attempted_sector_sizes') == [512, 4096, 65536]
+        assert lossless.get('verified_sector_sizes') == [4096, 65536] and lossless.get('skipped_sector_sizes') == [512]
+        assert lossless.get('native_savings', 0) > 0 and lossless.get('cli_savings', 0) > 0
+        assert lossless.get('native_output_bytes', 0) > 0 and lossless.get('native_selected_sector_size') in (4096, 65536)
+        assert re.fullmatch(r'[0-9a-f]{64}', lossless.get('cli_output_sha256', ''))
+        assert lossless.get('pjass') == {'analyze_input': 'Passed', 'optimize_input': 'Passed', 'optimize_output': 'Passed'}
+
     return report
 
 
@@ -163,7 +232,7 @@ def main():
     else:
         files, digest = inspect_archive(args.archive, release, args.checksum, args.expected_sha256)
         if args.windows_report:
-            validate_windows_report(args.windows_report, digest)
+            validate_windows_report(args.windows_report, digest, release["version"], files)
         print(f"PASS independent final artifact verification: {len(files)} files, SHA-256 {digest}")
 
 

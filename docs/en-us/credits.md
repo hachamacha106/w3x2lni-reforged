@@ -68,3 +68,32 @@ The compatibility work uses community format research from
 [WC3MapSpecification](https://github.com/ChiefOfGxBxL/WC3MapSpecification).
 The [W3I field reference](w3i-fields.md) identifies the exact source revisions
 used for the current map-information fields.
+
+## 1.1 dependency modernization and optimization references
+
+The 1.1 build path replaces only StormLib with a separately compiled, probed
+Windows x86 Unicode DLL using static zlib 1.3.2. Other upstream native components
+retain byte verification. pjass is a checksum-pinned added tool, not a rebuild of
+the original interpreter, GUI or parser libraries. A successful native Actions
+run is required before claiming this package has been validated.
+
+Optimization and verification ideas were studied in **Devo's Map Doctor** by
+**devoltzz**, at commit
+[6ea6991f5c15907a284c38dce8e8fd929082dfe8](https://github.com/devoltzz/devos-map-doctor/tree/6ea6991f5c15907a284c38dce8e8fd929082dfe8).
+The archive candidate/readback strategy and independent pjass diagnostics were
+adapted to this application's Lua architecture and stricter preservation policy.
+Its [MIT notice](../licenses/map-doctor-MIT.txt) accompanies the portable package.
+
+[pjass](https://github.com/lep/pjass) was originally written by Rudi Cilibrasi and
+improved by contributors; lep maintains the reviewed release-2026-06-15 source
+at commit 378a1ca9af3848fbc3be3d17069bcdb6a940ee32. Its
+[BSD notice](../licenses/pjass-BSD.txt) and [authors](../licenses/pjass-AUTHORS.txt)
+are preserved. The official Windows helper's SHA-256 is
+e6384d68fbaf4950d68e174945377dbd8b3b7c310c59122651d5a95ec0fb37d6.
+
+[StormLib 9.40](https://github.com/ladislav-zezula/StormLib/releases/tag/v9.40)
+is by Ladislav Zezula, pinned at 6bb1882bd00ddbc3729cac5dac0fda81a61e5514.
+[zlib 1.3.2](https://zlib.net/) is by Jean-loup Gailly and Mark Adler, pinned at
+da607da739fa6047df13e66a2af6b8bec7c2a498. Their
+[StormLib](../licenses/stormlib-MIT.txt) and [zlib](../licenses/zlib.txt)
+notices remain intact. Bundled codec/dependency notices are also distributed.

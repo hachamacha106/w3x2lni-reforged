@@ -20,6 +20,8 @@ function path_mt:__tostring() return self.value end
 function path_mt:__div(suffix) return path(self.value .. '/' .. tostring(suffix)) end
 function path_mt:parent_path() return path(assert(self.value:match('^(.*)/[^/]+$'))) end
 function path_mt:filename() return path(assert(self.value:match('[^/]+$'))) end
+function path_mt:extension() return path(self.value:match('(%.[^/%.]+)$') or '') end
+function path_mt:stem() return path(self:filename():string():gsub('%.[^%.]+$', '')) end
 
 local function create_app(locale)
     local observed = {controls = {}, windows = {}, clipboard = {}, selection_copies = {},
@@ -470,4 +472,184 @@ for _, locale in ipairs {'enUS', 'zhCN'} do
     print('PASS ' .. locale .. ' guarded diagnostics, reload/empty/missing logs and page navigation')
     print('PASS ' .. locale .. ' focused Win32 read-only request and safe failure paths (mock boundary)')
     print('PASS ' .. locale .. ' native resize/maximize/minimize settings and retained window size')
+end
+
+
+-- Exercise the actual action/Save As handlers with a strict dialog/worker
+-- boundary. No native GUI is opened and no map files are written.
+for _, locale in ipairs {'enUS', 'zhCN'} do
+    local app = create_app(locale)
+    local labels = app.lang.ui
+    equal(app.require('share.brand').window_title('Analyze'), 'W3x2lni Reforged - Analyze')
+    equal(app.require('share.brand').window_title('Optimize'), 'W3x2lni Reforged - Optimize')
+    local observed = {opens = {}, dialogs = {}, errors = {}, events = {}, loops = 0}
+    local ui = {}
+    for _, kind in ipairs {'container', 'button', 'label', 'progress', 'checkbox', 'tree'} do
+        ui[kind] = function(template) return template end
+    end
+    local captured = {}
+    function ui.create(template, data)
+        captured[#captured + 1] = template
+        return {setvisible = function() end}, data, {config = {addchildview = function() end}}
+    end
+    ui.createEx = function() return {} end
+    local native_window = {} -- Deliberately distinct from the controller table.
+    local window = {_filename = path(root .. '/Maps with spaces/input.w3x'),
+        _window = native_window, _color = '#00ADD9'}
+    function window:set_theme(title, color)
+        self._color = color
+        for _, listener in ipairs(observed.events) do listener(color, title) end
+    end
+    function window:show_page(name) self.page = name end
+    local worker = {exited = true}
+    function worker:cancel() observed.cancels = (observed.cancels or 0) + 1; return true end
+    local backend = {init = function() end}
+    function backend:open(filename, arguments)
+        equal(filename, 'backend\\init.lua')
+        observed.opens[#observed.opens + 1] = arguments
+        return worker
+    end
+    local dialog_methods = {}
+    function dialog_methods:settitle(title) self.title = title end
+    function dialog_methods:setfilename(name) self.filename = name end
+    function dialog_methods:setfolder(name) self.folder = name end
+    function dialog_methods:setfilters(filters) self.filters = filters end
+    function dialog_methods:runforwindow(parent)
+        equal(parent, native_window, 'Save As requires the actual Yue Window')
+        return observed.accept_dialog
+    end
+    function dialog_methods:getresult() return observed.destination end
+    local dialog_api = {create = function()
+        local dialog = setmetatable({}, {__index = dialog_methods})
+        observed.dialogs[#observed.dialogs + 1] = dialog
+        return dialog
+    end}
+    local dependencies = {
+        ['yue.gui'] = {FileSaveDialog = dialog_api},
+        ['gui.backend'] = backend,
+        ['gui.timer'] = {loop = function() observed.loops = observed.loops + 1 end},
+        ['ffi.messagebox'] = function(...) observed.errors[#observed.errors + 1] = {...} end,
+        ['share.lang'] = {ui = labels}, ['share.config'] = {},
+        ['gui.push_error'] = function() error('Unexpected worker error') end,
+        ['gui.new.template'] = ui,
+        ['gui.new.databinding'] = function(data) return {proxy = data} end,
+        ['gui.event'] = {on = function(_, listener) observed.events[#observed.events + 1] = listener end},
+        ['bee.filesystem'] = {path = path, current_path = function() return path(root .. '/script') end,
+            exists = function(value) return value:string() == observed.existing end},
+    }
+    local environment = setmetatable({window = window, arg = {[0] = root .. '/bin/w3x2lni-lua.exe'},
+        require = function(name) return assert(dependencies[name], 'Unmocked action dependency: ' .. name) end},
+        {__index = _G})
+    local convert = assert(loadfile(root .. '/script/gui/new/page/convert.lua', 't', environment))()
+    local conversion_template = captured[1]
+    local function handler(template, title)
+        if template.title == title and template.on and template.on.click then return template.on.click end
+        for _, child in ipairs(template) do
+            local found = handler(child, title)
+            if found then return found end
+        end
+    end
+    local start = assert(handler(conversion_template, labels.START))
+    assert(loadfile(root .. '/script/gui/new/page/select.lua', 't', environment))()
+    local select_template = captured[2]
+    assert(handler(select_template, labels.ANALYZE_MAP))()
+    equal(window._mode, 'analyze'); equal(window.page, 'convert')
+    start()
+    equal(#observed.dialogs, 0, 'Analyze must not ask for an output path')
+    equal(#observed.opens, 1)
+    equal(observed.opens[1][1], 'analyze'); equal(#observed.opens[1], 2)
+    equal(observed.opens[1][2], window._filename:string())
+    assert(handler(select_template, labels.OPTIMIZE_MAP))()
+    equal(window._mode, 'optimize')
+    observed.accept_dialog = false
+    start()
+    equal(#observed.opens, 1, 'Cancelling Save As must not start a worker')
+    local dialog = observed.dialogs[1]
+    equal(dialog.filename, 'input.optimized.w3x')
+    equal(dialog.folder, window._filename:parent_path():string())
+    observed.accept_dialog = true
+    observed.destination = window._filename:string()
+    observed.existing = observed.destination
+    start()
+    equal(#observed.opens, 1, 'Optimize must reject the source or any existing destination')
+    equal(#observed.errors, 1)
+    observed.destination = root .. '/Maps with spaces/optimized.w3x'
+    start()
+    equal(#observed.opens, 2)
+    equal(observed.opens[2][1], 'optimize')
+    equal(observed.opens[2][2], window._filename:string())
+    equal(observed.opens[2][3], observed.destination)
+    worker.exited = false
+    local dialogs = #observed.dialogs
+    start()
+    equal(#observed.opens, 2, 'A running operation must not start a second worker')
+    equal(#observed.dialogs, dialogs)
+    equal(observed.loops, 2)
+    assert(handler(conversion_template, labels.CANCEL_OPERATION))()
+    equal(observed.cancels, 1, 'Cancel must request cooperative worker cleanup')
+    local closing_cancelled = false
+    app.window._worker = {exited = false, cancel_file = true, cancel = function() closing_cancelled = true end}
+    app.windows[1]:close()
+    assert(closing_cancelled, 'Closing the app must request cancellation of a new archive action')
+    print('PASS ' .. locale .. ' Analyze/Optimize routing, native Save As parent, cancellation and no overwrite')
+end
+
+
+-- Actual GUI worker cancellation protocol; filesystem and process boundaries are
+-- simulated so no user files or processes are touched.
+do
+    local files, folders, observed = {}, {}, {}
+    local fs = {absolute = function(value) return value end,
+        temp_directory_path = function() return path(root .. '/Temporary folder') end,
+        create_directory = function(value)
+            local name=value:string();if folders[name] then return false end
+            folders[name]=true;return true
+        end,
+        remove = function(value) local name=value:string();files[name]=nil;folders[name]=nil;return true end}
+    local process = {get_id = function() return 1234 end}
+    function process.spawn(command)
+        observed.spawn=command
+        if observed.spawn_failure then return nil end
+        local native = {running = true}
+        function native:is_running() return self.running end
+        function native:wait() return 0 end
+        function native:kill() self.running=false end
+        return native
+    end
+    local mock_io = {open = function(filename, mode)
+        equal(mode, 'wb');assert(filename:match('/w2l%-cancel%-%d+%-%d+%-%d+/cancel$'))
+        local file = {}
+        function file:write(bytes)
+            if observed.write_failure then return nil, 'write failed' end
+            files[filename]=bytes;observed.writes=(observed.writes or 0)+1;return self
+        end
+        function file:close() return true end
+        return file
+    end}
+    local dependencies = {['bee.subprocess']=process,['bee.filesystem']=fs,
+        ['share.protocol']={recv=function() return nil end},['share.lang']={ui={FAILED='failed'}}}
+    local environment=setmetatable({io=mock_io,require=function(name) return assert(dependencies[name],name) end},
+        {__index=_G})
+    local backend=assert(loadfile(root .. '/script/gui/backend.lua','t',environment))()
+    backend:init(path(root .. '/bin/host.exe'),path(root .. '/script'))
+    local original={'optimize','input.w3x','output.w3x'}
+    local worker=assert(backend:open('backend/init.lua',original))
+    equal(#original,3,'Worker must not mutate caller arguments')
+    equal(observed.spawn[6][4],'-cancel-file=' .. worker.cancel_file:string())
+    assert(folders[worker.cancel_folder:string()])
+    observed.write_failure=true
+    equal(worker:cancel(),false,'Cancellation write failure must be visible')
+    observed.write_failure=false
+    assert(worker:cancel());assert(worker:cancel())
+    equal(observed.writes,1,'Repeated cancellation must be idempotent')
+    equal(files[worker.cancel_file:string()],'cancel')
+    worker.process.running=false;assert(worker:update())
+    assert(worker.exited and not files[worker.cancel_file:string()] and not folders[worker.cancel_folder:string()],
+        'Completed worker must remove its marker and owned empty directory')
+    local plain=assert(backend:open('backend/init.lua',{'obj','input.w3x','output.w3x'}))
+    assert(not plain.cancel_file and not plain:cancel(),'Existing conversion workflow must retain its defaults')
+    observed.spawn_failure=true
+    assert(not backend:open('backend/init.lua',{'analyze','input.w3x'}))
+    assert(next(folders)==nil,'Failed spawn left a cancellation directory')
+    print('PASS archive GUI cooperative cancellation, idempotency, failures and owned-marker cleanup')
 end

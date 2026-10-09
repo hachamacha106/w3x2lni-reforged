@@ -21,7 +21,7 @@ local template = ui.container {
         ui.button {
             title = lang.ui.CONVERT_TO..'Lni',
             color = '#00ADD9',
-            style = { MarginTop = 1, MarginBottom = 1, Height = 155 },
+            style = { MarginTop = 1, MarginBottom = 1, Height = 112 },
             on = {
                 click = function()
                     window._mode = 'lni'
@@ -34,7 +34,7 @@ local template = ui.container {
         ui.button {
             title = lang.ui.CONVERT_TO..'Slk',
             color = '#00AD3C',
-            style = { MarginTop = 1, MarginBottom = 1, Height = 155 },
+            style = { MarginTop = 1, MarginBottom = 1, Height = 112 },
             on = {
                 click = function()
                     window._mode = 'slk'
@@ -47,13 +47,39 @@ local template = ui.container {
         ui.button {
             title = lang.ui.CONVERT_TO..'Obj',
             color = '#D9A33C',
-            style = { MarginTop = 1, MarginBottom = 1, Height = 155 },
+            style = { MarginTop = 1, MarginBottom = 1, Height = 112 },
             on = {
                 click = function()
                     window._mode = 'obj'
                     window:set_theme('W3x2Obj', '#D9A33C')
                     window:show_page 'convert'
                     window:set_theme('W3x2Obj', '#D9A33C')
+                end
+            }
+        },
+        ui.button {
+            title = lang.ui.ANALYZE_MAP,
+            color = '#735FC1',
+            style = { MarginTop = 1, MarginBottom = 1, Height = 60 },
+            on = {
+                click = function()
+                    window._mode = 'analyze'
+                    window:set_theme('Analyze', '#735FC1')
+                    window:show_page 'convert'
+                    window:set_theme('Analyze', '#735FC1')
+                end
+            }
+        },
+        ui.button {
+            title = lang.ui.OPTIMIZE_MAP,
+            color = '#B25C9B',
+            style = { MarginTop = 1, MarginBottom = 1, Height = 60 },
+            on = {
+                click = function()
+                    window._mode = 'optimize'
+                    window:set_theme('Optimize', '#B25C9B')
+                    window:show_page 'convert'
+                    window:set_theme('Optimize', '#B25C9B')
                 end
             }
         }

@@ -27,6 +27,8 @@ end
 local function update_show()
     data.report.visible = not not backend.lastword
     data.progress.visible = (not not worker) and not data.report.visible
+    data.cancel.visible = worker and not worker.exited and not backend.lastword
+        and (window._mode == 'analyze' or window._mode == 'optimize') or false
 end
 
 local function update()
@@ -121,6 +123,18 @@ local template = ui.container {
                 end
             },
         },
+        ui.button {
+            title = lang.ui.CANCEL_OPERATION,
+            style = { Height = 30, MarginBottom = 8 },
+            bind = { visible = 'cancel.visible' },
+            on = { click = function()
+                if worker and not worker.exited and worker.cancel then
+                    local ok, err = worker:cancel()
+                    if ok then data.message = lang.ui.CANCELLING
+                    else messagebox(lang.ui.ERROR, '%s', tostring(err)) end
+                end
+            end },
+        },
         -- start
         ui.button {
             title = lang.ui.START,
@@ -133,13 +147,34 @@ local template = ui.container {
                     if worker and not worker.exited then
                         return
                     end
+                    local arguments = {window._mode, window._filename:string()}
+                    if window._mode == 'optimize' then
+                        local dialog = gui.FileSaveDialog.create()
+                        dialog:settitle(lang.ui.OPTIMIZE_SAVE)
+                        dialog:setfilename(window._filename:stem():string() .. '.optimized' .. window._filename:extension():string())
+                        dialog:setfolder(window._filename:parent_path():string())
+                        dialog:setfilters({{description = 'Warcraft III maps', extensions = {'w3x', 'w3m'}}})
+                        if not dialog:runforwindow(window._window) then
+                            return
+                        end
+                        arguments[3] = dialog:getresult()
+                        if fs.exists(fs.path(arguments[3])) then
+                            messagebox(lang.ui.ERROR, '%s', lang.ui.OPTIMIZE_NEW_PATH)
+                            return
+                        end
+                    end
                     backend:init(getexe(), fs.current_path())
-                    worker = backend:open('backend\\init.lua', {window._mode, window._filename:string()})
+                    worker = backend:open('backend\\init.lua', arguments)
+                    if not worker then
+                        messagebox(lang.ui.ERROR, '%s', lang.ui.FAILED)
+                        return
+                    end
                     backend.message = lang.ui.INIT
                     backend.progress = 0
                     data.progress.value = backend.progress / 100
                     data.progress.visible = true
                     data.report.visible = false
+                    data.cancel.visible = window._mode == 'analyze' or window._mode == 'optimize'
                     timer.loop(100, delayedtask)
                     window._worker = worker
                 end,
@@ -157,6 +192,7 @@ view, data, element = ui.create(template, {
         color = window._color,
         visible = false
     },
+    cancel = { visible = false },
     progress = {
         value = 0,
         visible = false
@@ -166,6 +202,11 @@ view, data, element = ui.create(template, {
 function view:on_show()
     update_show()
     data.filename = window._filename:filename():string()
+    if window._mode == 'analyze' then
+        data.message = lang.ui.ANALYZE_HINT
+    elseif window._mode == 'optimize' then
+        data.message = lang.ui.OPTIMIZE_HINT
+    end
 end
 
 local function checkbox(t)
@@ -335,6 +376,7 @@ ev.on('update theme', function(color, title)
     data.report.color = color
     backend.lastword = nil
     data.message = ''
+    data.cancel.visible = false
     worker = nil
 
     configData.proxy.theme = color
@@ -349,7 +391,7 @@ ev.on('update theme', function(color, title)
             pages[title] = slk()
         elseif title == 'W3x2Obj' then
             pages[title] = obj()
-        elseif title == 'War3Dump' then
+        elseif title == 'War3Dump' or title == 'Analyze' or title == 'Optimize' then
             pages[title] = mpq()
         end
         element.config:addchildview(pages[title])

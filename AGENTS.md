@@ -3,7 +3,7 @@
 ## Project
 - This is a Warcraft III map converter (LNI / OBJ / SLK) written primarily in Lua, with C++ components, Python tooling, and pinned third-party Git submodules.
 - `script/`: runtime, format conversion, parsing, GUI and reports. `data/`: game-version data and metadata. `test/`: unit, integration, compatibility and release checks. `make/`: build and packaging. `c++/`: native code. `docs/`: user and maintainer docs.
-- The release process currently **reuses byte-verified upstream 2.7.3 native Windows binaries**, and packages changed Lua scripts and game data. Do not claim changes to C++ are shipped unless a separate, verified native rebuild process is implemented.
+- The 1.0 release **reuses byte-verified upstream 2.7.3 native Windows binaries**. The 1.1 path builds and probes only StormLib (Windows x86 Unicode, static pinned zlib) and adds checksum-pinned pjass; every retained binary still matches upstream. Do not claim native builds, Actions, GUI or game acceptance passed without actual evidence.
 
 ## Guardrails
 - Read `MAINTAINER_GUIDE.md` and the relevant code/tests before editing. Make small scoped changes and describe behavioral implications.
@@ -19,6 +19,9 @@
   - `python -B test/release/release_artifact.py metadata`
   - `python -B test/compat/test_package_release.py`
   - `python -B -m compileall -q make test/compat test/release tools`
+  - `python -B test/compat/test_runtime_origins.py`
+  - `python -B test/release/test_native_runtime.py`
+  - `python -B test/release/test_windows_report.py`
 - For behavior changes, add or extend a targeted fixture/test under `test/` and explain any testing limitations.
 - Release validation runs through `.github/workflows/build.yml` (Linux compatibility plus Windows CLI smoke tests). Do not assert that this full process passed without an actual successful Actions run.
 

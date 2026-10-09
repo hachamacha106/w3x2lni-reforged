@@ -101,3 +101,54 @@ Then merge version changes into main and wait for CI. Create and push a tag matc
 - Native C++: `c++/` and pinned `3rd/` submodules (**not rebuilt for the current 1.0.0 release process**)
 
 See `docs/en-us/reforged-release.md` for the original full release-process details and `docs/en-us/current-warcraft.md` for format/data constraints. Keep upstream attribution and GPLv3 licensing.
+
+## 5. Maintaining the 1.1 native build and optimizer
+
+Use GitHub Desktop to review the feature branch, commit the reviewed source and
+push it only after approval. The full **Reforged release checks** workflow now
+first builds and probes Windows x86 StormLib 9.40 with static zlib 1.3.2. The
+Linux package job consumes that exact artifact, builds the same dependency pins
+for tests, runs all original 14 suites plus the pjass and lossless suites, and
+locks the final runtime fingerprint. Windows smoke tests exercise the exact ZIP.
+Manual dispatch still creates no release draft; a matching version tag does.
+
+The old upstream-runtime verification route remains available for historical
+packages. Version 1.1+ release packaging requires --native-runtime and --pjass.
+Only bin/stormlib.dll may be rebuilt; only bin/pjass.exe may be added. Retained
+files still match the byte-pinned upstream archive. Build settings, source pins,
+ABI evidence and component hashes must match. Never substitute a locally found
+DLL or silently fall back to bundled old zlib.
+
+For a local native build through graphical installation:
+1. Open **Visual Studio Installer**.
+2. Under Visual Studio 2022, click **Modify**.
+3. Select **Desktop development with C++**, including MSVC v143 x86/x64,
+   a Windows SDK, and **C++ CMake tools for Windows**.
+4. Click **Modify** to install. Codex can run the build and tests afterward.
+GitHub-hosted Windows runners provide the build environment for Actions.
+
+CascLib modernization is a separate follow-up. Require extraction from a real
+Warcraft installation; mocks and a DLL load test do not establish CASC coverage.
+The 1.1 optimizer preserves all member bytes and declines unsupported containers.
+pjass is report-only for user maps; release regression fixtures must still pass
+their required checker assertions. Keep manual editor/game acceptance separate
+from compiler and archive verification.
+
+See docs/releases/1.1.0.md for user-visible behavior and constraints.
+
+
+### Review the 1.1 work in stages
+
+Keep the review order: archive write/close failures; native build, pins and
+provenance; pjass service and conversion checks; Analyze/Optimize and GUI;
+release metadata, notices and acceptance evidence. The integration branch may
+hold the whole candidate, but review and commit these as scoped changes before
+opening small PRs. Dependency changes and their ABI/provenance checks belong
+together. Do not publish a partially wired package.
+
+The initial optimizer is limited to unsigned, fully inventoried ordinary MPQ v1
+archives. StormLib 9.40 rejects 512-byte sectors; the attempt is recorded as
+unsupported, while 4 KiB/64 KiB candidates require complete readback equality.
+The 256 MiB input cap is not a peak-memory guarantee. Run large-map measurements
+on Windows before raising limits. CascLib modernization and extra compression
+features remain separate follow-ups.

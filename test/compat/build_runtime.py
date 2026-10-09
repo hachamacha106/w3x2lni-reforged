@@ -51,9 +51,34 @@ jobs = [
         "3rd/bee.lua/bee/nonstd/fmt/format.cc",
     ], ["-I", str(ROOT / "3rd/bee.lua"),
         "-I", str(ROOT / "3rd/bee.lua/bee/nonstd"), "-ldl"]),
+    cxx("bee/subprocess", [
+        "3rd/bee.lua/binding/lua_subprocess.cpp",
+        "3rd/bee.lua/bee/subprocess/subprocess_posix.cpp",
+        "3rd/bee.lua/bee/net/socket.cpp",
+        "3rd/bee.lua/bee/net/endpoint.cpp",
+        "3rd/bee.lua/bee/error.cpp",
+        "3rd/bee.lua/bee/nonstd/fmt/format.cc",
+    ], ["-I", str(ROOT / "3rd/bee.lua"),
+        "-I", str(ROOT / "3rd/bee.lua/bee/nonstd"), "-pthread", "-ldl"]),
+    cxx("bee/time", ["3rd/bee.lua/binding/lua_time.cpp"],
+        ["-I", str(ROOT / "3rd/bee.lua"), "-include", "time.h"]),
+    cxx("bee/thread", [
+        "3rd/bee.lua/binding/lua_thread.cpp",
+        "3rd/bee.lua/bee/thread/simplethread_posix.cpp",
+        "3rd/bee.lua/bee/error.cpp",
+    ], ["-I", str(ROOT / "3rd/bee.lua"),
+        "-I", str(ROOT / "3rd/bee.lua/3rd/lua-seri"),
+        str(OUT / "bee/seri.o"), "-pthread", "-ldl"]),
 ]
 if len(sys.argv) > 2:
     jobs = [job for job in jobs if job[0] == sys.argv[2]]
+# lua-seri is C, so compile it separately before the dependent thread module.
+if any(name == "bee/thread" for name, _ in jobs):
+    code = run(("bee/seri", ["gcc", "-O2", "-fPIC", "-I", str(LUA),
+                            "-c", str(ROOT / "3rd/bee.lua/3rd/lua-seri/lua-seri.c"),
+                            "-o", str(OUT / "bee/seri.o")]))
+    if code:
+        sys.exit(code)
 with ThreadPoolExecutor(max_workers=4) as pool:
     results = list(pool.map(run, jobs))
 sys.exit(1 if any(results) else 0)

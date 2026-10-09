@@ -86,3 +86,26 @@
 Ctrl+A：全选   Ctrl+C：复制所选文本
 [MAINTAINER]
 维护者：
+[ANALYZE_MAP]
+分析地图
+
+[OPTIMIZE_MAP]
+优化压缩包
+
+[ANALYZE_HINT]
+检查文件大小、地图数据保留和 JASS 验证。
+
+[OPTIMIZE_HINT]
+无损优化地图压缩包；请选择新的输出文件。
+
+[OPTIMIZE_SAVE]
+将优化后的地图保存到新文件
+
+[OPTIMIZE_NEW_PATH]
+请选择新文件名。不会覆盖现有文件。
+
+[CANCEL_OPERATION]
+取消操作
+
+[CANCELLING]
+正在取消，等待安全清理...

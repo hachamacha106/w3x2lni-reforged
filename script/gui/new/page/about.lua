@@ -37,6 +37,24 @@ local template = ui.container {
             style = { Height = 28, Width = 240 }
         },
         ui.label {
+            text = 'Optimization ideas: devoltzz / Devo Map Doctor',
+            text_color = '#AAA',
+            style = { Height = 28 },
+        },
+        ui.label {
+            text = 'JASS verification: pjass (Rudi Cilibrasi, lep and contributors)',
+            text_color = '#AAA',
+            style = { Height = 28 },
+        },
+        ui.label {
+            text = 'Archive: StormLib / Ladislav Zezula',
+            text_color = '#AAA', style = { Height = 28 },
+        },
+        ui.label {
+            text = 'Compression: zlib / Jean-loup Gailly and Mark Adler',
+            text_color = '#AAA', style = { Height = 28 },
+        },
+        ui.label {
             text = lang.ui.CHANGE_LOG,
             text_color = '#000',
             style = { Height = 28, Width = 240 },

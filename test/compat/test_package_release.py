@@ -151,7 +151,7 @@ class ReleasePackagingTests(unittest.TestCase):
             packager.validate_test_report(result, 'matching', source)
         result['source_tree'] = source['tree']
         result['suites'][0] = result['suites'][1]
-        with self.assertRaisesRegex(ValueError, '14 distinct'):
+        with self.assertRaisesRegex(ValueError, 'distinct extracted-package'):
             packager.validate_test_report(result, 'matching', source)
 
 

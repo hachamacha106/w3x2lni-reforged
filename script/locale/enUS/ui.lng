@@ -86,3 +86,27 @@ Copy all
 Ctrl+A: select all   Ctrl+C: copy selection
 [MAINTAINER]
 Maintainer:
+
+[ANALYZE_MAP]
+Analyze map
+
+[OPTIMIZE_MAP]
+Optimize archive
+
+[ANALYZE_HINT]
+Inspect sizes, archive preservation and JASS verification.
+
+[OPTIMIZE_HINT]
+Lossless archive optimization; choose a new output file.
+
+[OPTIMIZE_SAVE]
+Save optimized map to a new file
+
+[OPTIMIZE_NEW_PATH]
+Choose a new filename. Existing files are never overwritten.
+
+[CANCEL_OPERATION]
+Cancel operation
+
+[CANCELLING]
+Cancelling; waiting for safe cleanup...

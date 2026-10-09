@@ -1,5 +1,11 @@
 # W3x2lni Reforged
 
+> Development for **1.1.0** adds Analyze / lossless Optimize actions, report-only
+> pjass checks and a verified StormLib/zlib build path. This source candidate
+> requires successful Actions and manual editor/game acceptance before release.
+> See [1.1 candidate notes](docs/releases/1.1.0.md).
+
+
 **A community fork of [sumneko/w3x2lni](https://github.com/sumneko/w3x2lni), updated for modern Warcraft III map development and distribution.**
 
 Convert Warcraft III maps between editable text projects, World Editor object

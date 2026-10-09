@@ -80,6 +80,9 @@ function window:create(t)
     -- Use the native frame for resize borders, maximize/restore and the system menu.
     local win = gui.Window.create { frame = true }
     function win.onclose()
+        if window._worker and not window._worker.exited and window._worker.cancel_file then
+            pcall(window._worker.cancel, window._worker)
+        end
         gui.MessageLoop.quit()
     end
     -- The unchanged native extension locates the window by this initial title.

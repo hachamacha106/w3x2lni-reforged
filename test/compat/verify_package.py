@@ -16,6 +16,10 @@ from pathlib import Path, PurePosixPath
 import subprocess
 import time
 import zipfile
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'make'))
+from runtime_origins import verify_origins
 
 ROOT_NAME = 'w3x2lni-current-preview'
 SUITES = [
@@ -33,6 +37,8 @@ SUITES = [
     ('Descriptive W3I fields and current fog layout', 'w3i_names.lua'),
     ('Resizable and copyable reports with mocked Yue/Win32 boundary', 'gui_report.lua'),
     ('Current-editor map conversions and real MPQ archives', 'user_map.py'),
+    ('Report-only pjass verification', 'jass_verify.lua'),
+    ('Lossless archive bounds and write safety', 'lossless.lua'),
 ]
 
 
@@ -199,11 +205,8 @@ def main():
             assert sha256(args.upstream.read_bytes()) == info['native_runtime']['release_zip_sha256'], \
                 'Official runtime ZIP hash does not match release provenance'
         with zipfile.ZipFile(args.upstream) as upstream:
-            for name in upstream.namelist():
-                if name.lower().endswith(('.exe', '.dll')):
-                    assert files[name] == upstream.read(name), 'Changed native binary: ' + name
-                    checked_native += 1
-        assert checked_native == 22
+            upstream_files = {name: upstream.read(name) for name in upstream.namelist() if not name.endswith('/')}
+        checked_native = verify_origins(files, info, upstream_files)
     work = args.workdir.resolve()
     work.mkdir(parents=True, exist_ok=False)
     extracted = work / archive_root(files)
