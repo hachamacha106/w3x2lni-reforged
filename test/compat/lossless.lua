@@ -430,3 +430,214 @@ for _, action in ipairs {'analyze', 'optimize'} do
     assert(exit_result.kind == 'error', 'An ordinary failure was mislabeled cancellation')
 end
 print('PASS Analyze/Optimize CLI cancellation, post-checker marker, completed output and marker ownership')
+
+-- Read-only LNI analysis uses the real escaped directory traversal and real
+-- analysis logic; no map assembly or archive writes are available in this seam.
+function path_mt:filename() return test_path(self.value:match('[^/]+$') or '') end
+local entry_types, canonical_paths, unreadable, read_paths = {}, {}, {}, {}
+function test_fs.canonical(path) return test_path(canonical_paths[path:string()] or path:string()) end
+function test_fs.symlink_status(path)
+    local kind = entry_types[path:string()] or (dirs[path:string()] and 'directory')
+        or (disks[path:string()] and 'regular') or 'not_found'
+    return {type = function() return kind end}
+end
+function test_fs.pairs(path)
+    assert(not unreadable[path:string()], 'injected unreadable project directory')
+    local prefix, names, seen = path:string() .. '/', {}, {}
+    for _, entries in ipairs {disks, dirs, entry_types} do
+        for name in pairs(entries) do
+            if name:sub(1, #prefix) == prefix and not name:sub(#prefix + 1):find('/', 1, true) and not seen[name] then
+                names[#names + 1], seen[name] = test_path(name), true
+            end
+        end
+    end
+    table.sort(names, function(a, b) return a:string() < b:string() end)
+    local index = 0
+    return function() index = index + 1; return names[index] end
+end
+local directory_deps = {['bee.filesystem'] = test_fs, ['map-builder.path_filter'] = function() end}
+local directory = assert(loadfile(root .. '/script/map-builder/archive_dir.lua', 't', setmetatable({
+    require = function(name) return assert(directory_deps[name], name) end}, {__index = _G})))()
+runtime_deps['map-builder.archive_dir'] = directory
+runtime_deps['share.check_lni_mark'] = assert(loadfile(root .. '/script/share/check_lni_mark.lua'))()
+runtime_deps['share.lang'] = {w3i = {MAP = 'map', SCRIPT_TYPE = 'script_type'}}
+local native_open = test_io.open
+function test_io.open(path, mode)
+    assert(mode == 'rb', 'LNI analysis attempted a file write')
+    read_paths[path] = true
+    if unreadable[path] then return nil, 'injected unreadable project member' end
+    if path:sub(-9) == 'large.bin' then
+        return {seek = function(_, where) return where == 'end' and runtime.max_input_bytes + 1 or 0 end,
+            read = function() error('Oversized project member was read') end, close = function() return true end}
+    end
+    return native_open(path, mode)
+end
+local lni_root = '/maps/Exported LNI'
+for _, dir in ipairs {'', '/map', '/resource', '/resource/Textures', '/sound', '/scripts', '/table', '/trigger', '/w3x2lni', '/.git'} do
+    dirs[lni_root .. dir] = true
+end
+local valid_jass = 'function main takes nothing returns nothing\nendfunction\n'
+local import_bytes, language_bytes = 'test-import-list', 'test-JASS-language'
+local lni_files = {
+    ['.w3x'] = 'HM3W' .. string.rep(string.char(0), 4) .. 'W2L' .. string.char(1) .. 'unknown marker bytes',
+    ['map/war3map.j'] = valid_jass, ['war3map.j'] = 'project-only root script must not replace the map script',
+    ['map/unknown.sidecar'] = string.char(0, 255) .. 'opaque', ['resource/Textures/a.blp'] = 'same texture',
+    ['resource/Textures/b.blp'] = 'same texture', ['resource/texture$24tag.blp'] = 'escaped filename',
+    ['resource/texture$2fpart.blp'] = 'forward slash filename',
+    ['sound/theme.wav'] = 'sound bytes', ['scripts/common.j'] = 'map-bundled declarations',
+    ['table/imp.ini'] = import_bytes, ['table/w3i.ini'] = language_bytes,
+    ['trigger/unknown.lml'] = 'project trigger source', ['w3x2lni/unknown.cache'] = 'preserved auxiliary file',
+}
+local original_lni, total = {}, 0
+for name, bytes in pairs(lni_files) do
+    disks[lni_root .. '/' .. name] = bytes
+    original_lni[lni_root .. '/' .. name] = bytes
+    total = total + #bytes
+end
+disks[lni_root .. '/.git/config'] = 'development metadata ignored by the existing LNI archive rules'
+local checker_options, checker_script, checked = nil, nil, 0
+runtime_deps['backend.jass_verify'] = {
+    check = function(_, provider, phase, options)
+        checked = checked + 1
+        checker_options, checker_script = options, provider:get('war3map.j')
+        assert(provider:get('common.j') == nil and provider:get('scripts\\common.j') == 'map-bundled declarations')
+        return {phase = phase, status = options.script_type == 'Lua' and 'Skipped' or 'Failed',
+            diagnostics = {'deliberately report-only'}, raw_output = ''}
+    end,
+    report = function(_, result) assert(result.status == 'Skipped') end,
+}
+runtime_deps['lni'] = function(bytes)
+    if bytes == import_bytes then return {import = {'Textures\\a.blp', 'theme.wav', 'texture$tag.blp', 'texture/part.blp', 'missing.bin'}} end
+    if bytes == language_bytes then return {map = {script_type = 'JASS'}} end
+    if bytes == 'test-Lua-language' then return {map = {script_type = 'Lua'}} end
+    if bytes == 'test-localized-Lua-language' then return {project_map = {project_language = 'Lua'}} end
+    if bytes == 'test-legacy-import-list' then return {root = {import = {'Textures\\a.blp'}}} end
+    if bytes == 'test-invalid-import-list' then return {import = {[1] = 'Textures\\a.blp', [3] = 'missing.bin'}} end
+    if bytes == 'test-invalid-import-root' then return {root = 5} end
+    error('injected malformed LNI metadata')
+end
+local w2l = {setting = {data = 'warcraft-current'}}
+local folder_info = runtime.analyze(lni_root, {w2l = w2l})
+assert(folder_info.input_type == 'lni' and folder_info.complete and not folder_info.eligible)
+assert(#folder_info.files == 14 and folder_info.input_size == total and #folder_info.duplicates == 1)
+assert(folder_info.duplicates[1].names[1] == 'resource\\Textures\\a.blp')
+assert(#folder_info.import_issues == 1 and folder_info.import_issues[1] == 'Missing imported file: missing.bin')
+assert(checker_script == valid_jass and checker_options.script_type == 'JASS' and folder_info.pjass.status == 'Failed')
+assert(folder_info.provider('unknown.sidecar') == string.char(0, 255) .. 'opaque')
+assert(folder_info.provider('texture$tag.blp') == 'escaped filename' and folder_info.provider('texture/part.blp') == 'forward slash filename')
+assert(folder_info.provider('unknown.cache') == nil and folder_info.provider('w3x2lni\\unknown.cache') == 'preserved auxiliary file')
+assert(not read_paths[lni_root .. '/.git/config'], 'Development metadata became map content')
+for path, bytes in pairs(original_lni) do assert(disks[path] == bytes, 'Analyze changed exported project bytes') end
+local accepted, message = pcall(runtime.optimize, lni_root, '/maps/LNI must not optimize.w3x', {w2l = w2l})
+assert(not accepted and message:find('LNI folders are analysis only', 1, true) and not disks['/maps/LNI must not optimize.w3x'])
+-- The iterator explicitly disqualifies linked/special/outside-root entries.
+entry_types[lni_root .. '/external link'] = 'symlink'
+entry_types[lni_root .. '/special fifo'] = 'fifo'
+disks[lni_root .. '/map/outside.bin'] = 'must not be read'
+canonical_paths[lni_root .. '/map/outside.bin'] = '/outside/map-data.bin'
+folder_info = runtime.analyze(lni_root, {w2l = w2l})
+assert(not folder_info.complete and not read_paths['/outside/map-data.bin'])
+rejected(folder_info, 'symlink'); rejected(folder_info, 'fifo'); rejected(folder_info, 'outside the input folder')
+entry_types[lni_root .. '/external link'], entry_types[lni_root .. '/special fifo'] = nil, nil
+disks[lni_root .. '/map/outside.bin'], canonical_paths[lni_root .. '/map/outside.bin'] = nil, nil
+local skipped = {}
+local finished = directory(test_path(lni_root), true):foreach_file(function() end,
+    {max_entries = 2, skipped = function(name, reason) skipped[#skipped + 1] = reason end})
+assert(not finished and skipped[1]:find('entry safety limit', 1, true), 'Directory inventory ignored its entry bound')
+finished = directory(test_path(lni_root), true):foreach_file(function() end,
+    {max_depth = 0, skipped = function(name, reason) skipped[#skipped + 1] = reason end})
+assert(finished and skipped[#skipped]:find('nesting exceeds', 1, true))
+assert(not pcall(directory(test_path(lni_root), false).foreach_file,
+    directory(test_path(lni_root), false), function() end), 'Writable directory exposed diagnostic traversal')
+-- Wrongly placed file types keep the same logical names as core.proxy.
+disks[lni_root .. '/map/misplaced.blp'] = 'misplaced asset retained'
+folder_info = runtime.analyze(lni_root, {w2l = w2l})
+assert(folder_info.provider('misplaced.blp') == nil and folder_info.provider('map\\misplaced.blp') == 'misplaced asset retained')
+disks[lni_root .. '/map/misplaced.blp'] = nil
+-- map/scripts/common.j and scripts/common.j both pack as scripts\common.j.
+dirs[lni_root .. '/map/scripts'] = true
+disks[lni_root .. '/map/scripts/common.j'] = 'conflicting declarations'
+folder_info = runtime.analyze(lni_root)
+assert(not folder_info.complete and folder_info.provider('scripts\\common.j') == nil)
+rejected(folder_info, 'Ambiguous logical map filename')
+disks[lni_root .. '/map/scripts/common.j'] = nil
+disks[lni_root .. '/map/scripts/war3map.j'] = 'different nested JASS script'
+disks[lni_root .. '/scripts/war3map.j'] = valid_jass
+folder_info = runtime.analyze(lni_root, {w2l = w2l})
+assert(not folder_info.complete and folder_info.pjass.status == 'Skipped')
+assert(folder_info.pjass.diagnostics[1]:find('Conflicting exported script filenames', 1, true))
+disks[lni_root .. '/map/scripts/war3map.j'], disks[lni_root .. '/scripts/war3map.j'] = nil, nil
+dirs[lni_root .. '/map/scripts'] = nil
+unreadable[lni_root .. '/map/unknown.sidecar'] = true
+folder_info = runtime.analyze(lni_root)
+assert(not folder_info.complete); rejected(folder_info, 'could not be read')
+unreadable[lni_root .. '/map/unknown.sidecar'] = nil
+disks[lni_root .. '/map/large.bin'] = 'size supplied independently by the file handle'
+folder_info = runtime.analyze(lni_root)
+assert(not folder_info.complete and folder_info.largest[1].decoded_size == runtime.max_input_bytes + 1)
+rejected(folder_info, '256 MiB'); disks[lni_root .. '/map/large.bin'] = nil
+local observations = 0
+local cancelled_folder, cancellation_error = pcall(runtime.analyze, lni_root,
+    {cancelled = function() observations = observations + 1; return observations > 8 end})
+assert(not cancelled_folder and cancellation_error:find('Optimization cancelled', 1, true))
+disks[lni_root .. '/table/imp.ini'] = 'test-legacy-import-list'
+folder_info = runtime.analyze(lni_root)
+assert(folder_info.complete and #folder_info.import_issues == 0)
+disks[lni_root .. '/table/imp.ini'] = 'test-invalid-import-list'
+folder_info = runtime.analyze(lni_root)
+assert(#folder_info.import_issues == 1 and folder_info.import_issues[1]:find('Cannot fully analyze LNI imports', 1, true))
+disks[lni_root .. '/table/imp.ini'] = 'test-invalid-import-root'
+folder_info = runtime.analyze(lni_root)
+assert(folder_info.import_issues[1]:find('Cannot fully analyze LNI imports', 1, true))
+disks[lni_root .. '/table/imp.ini'] = import_bytes
+disks[lni_root .. '/table/w3i.ini'] = 'test-Lua-language'
+folder_info = runtime.analyze(lni_root, {w2l = w2l})
+assert(folder_info.script_type == 'Lua' and checker_options.script_type == 'Lua' and folder_info.pjass.status == 'Skipped')
+dirs[lni_root .. '/w3x2lni/locale'] = true
+disks[lni_root .. '/w3x2lni/locale/w3i.lng'] = '[MAP]\r\nproject_map\r\n[SCRIPT_TYPE]\r\nproject_language\r\n[OTHER]\r\nunused'
+disks[lni_root .. '/table/w3i.ini'] = 'test-localized-Lua-language'
+folder_info = runtime.analyze(lni_root, {w2l = w2l})
+assert(folder_info.script_type == 'Lua' and checker_options.script_type == 'Lua')
+assert(runtime_deps['share.lang'].w3i.MAP == 'map', 'Project locale changed the global application language')
+disks[lni_root .. '/w3x2lni/locale/w3i.lng'], dirs[lni_root .. '/w3x2lni/locale'] = nil, nil
+local previous_checks = checked
+disks[lni_root .. '/table/w3i.ini'] = 'malformed metadata'
+folder_info = runtime.analyze(lni_root, {w2l = w2l})
+assert(folder_info.pjass.status == 'Skipped' and checked == previous_checks)
+assert(folder_info.pjass.diagnostics[1]:find('Cannot read LNI script-language metadata', 1, true))
+disks[lni_root .. '/table/w3i.ini'] = language_bytes
+disks[lni_root .. '/.w3x'] = 'unrecognized marker'
+assert(not pcall(runtime.analyze, lni_root), 'An unrelated directory was accepted as LNI')
+disks[lni_root .. '/.w3x'] = original_lni[lni_root .. '/.w3x']
+for path, bytes in pairs(original_lni) do assert(disks[path] == bytes, 'Folder diagnostics changed project files') end
+print('PASS read-only LNI physical inventory, logical mapping, duplicates, imports, language, traversal bounds and archive refusal')
+
+local folder_exit, folder_log
+function test_fs.is_regular_file(path) return disks[path:string()] ~= nil end
+function test_fs.create_directories() end
+local folder_messager = {title = function() end, progress = function() end, report = function() end,
+    exit = function(kind, content) folder_exit = {kind = kind, content = content} end}
+local folder_cli_deps = {
+    ['bee.filesystem'] = test_fs, ['backend.w2l_path'] = test_path('/package'),
+    ['backend.base_path'] = test_path('/maps'), ['backend.command'] = {},
+    ['share.messager'] = folder_messager, ['bee.time'] = {monotonic = function() return 100 end},
+    ['backend.unpack_setting'] = function()
+        return {input = test_path(lni_root), output = test_path('/maps/refused-folder.w3x')}
+    end,
+    ['backend.sandbox_core'] = function()
+        return {setting = w2l.setting, set_messager = function() end, set_setting = function() end}
+    end,
+    ['backend.lossless'] = runtime,
+}
+local folder_cli = assert(loadfile(root .. '/script/backend/lossless_cli.lua', 't', setmetatable({
+    io = {save = function(_, bytes) folder_log = bytes; return true end},
+    require = function(name) return assert(folder_cli_deps[name], name) end}, {__index = _G})))()
+folder_cli('analyze')
+assert(folder_exit.kind == 'success' and folder_exit.content == 'Analysis complete')
+assert(folder_log:find('LNI project size:', 1, true) and folder_log:find('optimization: analysis only', 1, true))
+assert(folder_log:find('archive optimization is unavailable', 1, true) and not folder_log:find(' - 0', 1, true))
+folder_cli('optimize')
+assert(folder_exit.kind == 'error' and folder_log:find('Optimize requires a packed .w3x or .w3m map file', 1, true))
+assert(not disks['/maps/refused-folder.w3x'], 'CLI assembled a folder during archive optimization')
+for path, bytes in pairs(original_lni) do assert(disks[path] == bytes, 'CLI diagnostics changed project files') end
+print('PASS LNI Analyze CLI reports project sizes and analysis-only scope; Optimize refuses folders')

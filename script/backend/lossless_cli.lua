@@ -8,7 +8,7 @@ local core = require 'backend.sandbox_core'
 local lossless = require 'backend.lossless'
 
 local function display(text)
-    return tostring(text):gsub('[^\32-\126]', function(c) return ('\\x%02X'):format(c:byte()) end)
+    return (tostring(text):gsub('[^\32-\126]', function(c) return ('\\x%02X'):format(c:byte()) end))
 end
 
 return function(action)
@@ -40,7 +40,8 @@ return function(action)
                 return cancellation_requested
             end
         end
-        assert(setting.input and fs.is_regular_file(setting.input), 'Choose an existing .w3x or .w3m map file')
+        assert(setting.input and (fs.is_regular_file(setting.input) or action == 'analyze' and fs.is_directory(setting.input)),
+            action == 'analyze' and 'Choose a .w3x or .w3m map, or an exported LNI folder' or 'Optimize requires a packed .w3x or .w3m map file')
         local info
         if action == 'analyze' then
             info = lossless.analyze(setting.input, options)
@@ -56,8 +57,13 @@ return function(action)
         return info
     end, debug.traceback)
     if ok then
-        emit(('Map size: %d bytes; inventory: %s; optimization: %s'):format(result.input_size,
+        emit(('%s: %d bytes; inventory: %s; optimization: %s'):format(
+            result.input_type == 'lni' and 'LNI project size' or 'Map size', result.input_size,
             result.complete and 'complete' or 'partial', result.eligible and 'eligible' or 'analysis only'))
+        if result.input_type == 'lni' then
+            emit(('Exported project files: %d'):format(#result.files),
+                'Sizes describe files on disk; converted tables and triggers are not assembled into map binaries.')
+        end
         for _, reason in ipairs(result.reasons) do emit('Skipped: ' .. display(reason)) end
         for i, member in ipairs(result.largest) do
             emit(('%d. %s'):format(i, display(member.name)), ('Decoded: %d bytes; stored: %s'):format(
