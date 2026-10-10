@@ -4,7 +4,7 @@ local lang = require 'lang'
 local ipairs = ipairs
 local pairs = pairs
 
-local jass, state, report, confuse1, confuse2
+local jass, state, report, confuse1
 local current_function, current_line, has_call
 local executes, executed_any, global_variable_any
 local mark_exp, mark_lines, mark_function
@@ -313,13 +313,13 @@ local function mark_executed_used(func)
     end
     if can_be_any_executed(func) then
         mark_function(func)
-        return
+        return func.used
     end
     local name = func.name
     for head in pairs(executes) do
         if name:sub(1, #head) == head then
             mark_function(func)
-            return
+            return func.used
         end
     end
 end
@@ -337,8 +337,8 @@ local function mark_executed_confuse(func)
     end
     for head in pairs(executes) do
         if name:sub(1, #head) == head then
-            func.confused = confuse2(head) .. name:sub(#head+1)
-            jass.confused_head[head] = confuse2(head)
+            -- Runtime suffixes can reach the same function through overlapping
+            -- prefixes. Preserve its name and the original ExecuteFunc strings.
             return
         end
     end
@@ -349,9 +349,16 @@ local function mark_executed()
     if not executes then
         return
     end
-    for _, func in ipairs(jass.functions) do
-        mark_executed_used(func)
-    end
+    -- A newly reached dispatcher can introduce another dynamic prefix. Keep
+    -- following those references until no additional function becomes used.
+    repeat
+        local marked = false
+        for _, func in ipairs(jass.functions) do
+            if mark_executed_used(func) then
+                marked = true
+            end
+        end
+    until not marked
     if confuse1 then
         for _, func in ipairs(jass.functions) do
             mark_executed_confuse(func)
@@ -359,35 +366,17 @@ local function mark_executed()
     end
 end
 
-local cant_use = {'globals', 'endglobals', 'constant', 'native', 'array', 'and', 'or', 'not', 'type', 'extends', 'function', 'endfunction', 'nothing', 'takes', 'returns', 'call', 'set', 'return', 'if', 'endif', 'elseif', 'else', 'loop', 'endloop', 'exitwhen', 'main', 'config'}
+local cant_use = {'globals', 'endglobals', 'constant', 'native', 'array', 'and', 'or', 'not', 'type', 'extends', 'function', 'endfunction', 'nothing', 'takes', 'returns', 'call', 'set', 'return', 'if', 'endif', 'elseif', 'else', 'loop', 'endloop', 'exitwhen', 'then', 'local', 'true', 'false', 'null', 'debug', 'main', 'config'}
 for _, name in ipairs(cant_use) do
     cant_use[name] = true
 end
 
 local function can_use(name)
-    if cant_use[name] then
-        return false
-    end
-    local func = get_function(name)
-    if func then
-        if func.file ~= 'war3map.j' then
-            return false
-        end
-        if not func.confused then
-            return false
-        end
-        return true
-    end
-    local var, type = get_var(name)
-    if type == 'global' then
-        if var.file ~= 'war3map.j' then
-            return false
-        end
-        return true
-    elseif type == 'arg' or type == 'local' then
-        return true
-    end
-    return true
+    -- Some globals/functions must keep their original names for string-based
+    -- events or calls. Never allocate those names to another declaration, even
+    -- before discovering the dynamic reference that requires preservation.
+    return not (cant_use[name] or state.functions[name]
+        or state.globals[name] or state.types[name])
 end
 
 local function init_confuser(confused, confusion)
@@ -399,11 +388,13 @@ local function init_confuser(confused, confusion)
     local chars = {}
     for char in confusion:gmatch '[%w_]' do
         if not chars[char] then
+            chars[char] = true
             chars[#chars+1] = char
         end
     end
     if #chars < 3 then
         report(lang.report.CONFUSE_JASS, lang.report.CONFUSED_FAILED, lang.report.NEED_3_CHARS)
+        return
     end
 
     confusion = table.concat(chars)
@@ -427,22 +418,16 @@ local function init_confuser(confused, confusion)
         end
     end
 
-    jass.confused_head = {}
-    confuse2 = confuser(confusion)
-    function confuse2:on_find(name)
-        name = confuse_head .. name
-        if can_use(name) then
-            return name
-        else
-            return nil
-        end
-    end
 end
 
 return function (ast, _state, config, _report)
     jass = ast
     report = _report
     state = _state
+    confuse1 = nil
+    executes, executed_any, global_variable_any = nil, nil, nil
+    current_function, current_line, has_call = nil, nil, nil
+    jass.confused_head = nil
 
     init_confuser(config.confused, config.confusion)
     mark_function(get_function 'config')

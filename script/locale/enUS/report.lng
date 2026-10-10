@@ -62,8 +62,12 @@ JASS syntax error
 The text contains both commas and double quotes
 [OBJECT_ID_CONFLICT]
 Id [%s] is conflicted between different objects
+[CASE_ONLY_ID_COLLISION]
+SLK/TXT case-only ID collision [%s]; retained objects use binary data with unchanged IDs
+[TXT_PROFILE_ID_COLLISION]
+SLK/TXT profile ID [%s] is shared by different object types
 [TXT_CONFLICT]
-Txt is conflicted between different objects
+TXT field conflict; retaining this field in binary object data
 [NO_CONVERT_WTG]
 Didn't convert WTG
 [SIMPLIFIED_OBJECT]

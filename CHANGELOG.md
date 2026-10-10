@@ -3,6 +3,27 @@
 This file tracks **W3x2lni Reforged** releases. The original project's detailed
 history remains in [`script/share/changelog.lua`](script/share/changelog.lua).
 
+## 1.1.5 — 2026-10-10
+
+- Prevent generated JASS identifiers from colliding with original functions,
+  globals or types, including real globals retained for variable events.
+- Preserve runtime `ExecuteFunc` callback names and string prefixes when dynamic
+  routes overlap, and retain callbacks reached through other dynamic dispatchers.
+- Reset optimizer and serializer state between operations so earlier conversions
+  cannot affect later scripts or global initializers.
+- Deduplicate custom obfuscation alphabets and leave names unchanged when the
+  alphabet does not contain enough distinct characters or letters.
+- Clarify case-only and cross-type SLK/TXT profile warnings. Retained objects use
+  binary fallback where needed; their original IDs remain unchanged.
+- Add regression checks for identifier collisions, dynamic callback routing,
+  repeated operations and custom alphabets, with real pjass input/output checks
+  against current and legacy Warcraft declarations.
+
+pjass remains report-only. Native dependency pins and the retained upstream
+runtime remain unchanged. The maintainer reported successful gameplay with
+Confuse scripts both off and on in the local preview for their tested map;
+the original map from the corruption report was not available for reproduction.
+
 ## 1.1.0 — 2026-10-09
 
 - Refresh the conversion interface with a high-contrast dark theme, clearer

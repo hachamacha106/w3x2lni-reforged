@@ -546,6 +546,7 @@ return function (ast, _state, _report, _messager)
     report = _report
     state = _state
     messager = _messager
+    current_function, current_line = nil, nil
 
     add_types()
     add_globals()

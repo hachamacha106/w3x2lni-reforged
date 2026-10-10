@@ -403,7 +403,7 @@ local function prebuild_merge(obj, a, b)
     if a._type ~= b._type then
         local tp1, _, name1 = w2l:get_displayname(a)
         local tp2, _, name2 = w2l:get_displayname(b)
-        w2l.messager.report(lang.report.WARN, 2, (lang.report.OBJECT_ID_CONFLICT):format(obj._id), ('[%s]%s --> [%s]%s'):format(tp1, name1, tp2, name2))
+        w2l.messager.report(lang.report.WARN, 2, (lang.report.TXT_PROFILE_ID_COLLISION):format(obj._id), ('`%s`[%s]%s --> `%s`[%s]%s'):format(a._id, tp1, name1, b._id, tp2, name2))
     end
     for k, v in pairs(b) do
         if k == '_id' or k == '_type' or k == '_slk_id' then

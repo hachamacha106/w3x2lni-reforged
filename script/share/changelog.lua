@@ -1,5 +1,12 @@
 return {
 {
+    version = '1.1.5',
+    { 'FIX', 'Prevent duplicate globals and preserve dynamic callbacks with Confuse scripts enabled' },
+    { 'FIX', 'Reset script optimizer state between conversions and validate custom obfuscation alphabets' },
+    { 'UI', 'Clarify SLK/TXT ID warnings while retaining exact rawcodes and binary fallback' },
+    { 'CHG', 'Add real pjass and callback regression checks for current and legacy Warcraft data' },
+},
+{
     version = '1.1.0',
     { 'FIX', 'Check archive write, finish and close failures' },
     { 'UI', 'Readable conversion interface focused on LNI, OBJ and SLK' },
