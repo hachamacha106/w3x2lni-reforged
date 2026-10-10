@@ -61,6 +61,27 @@ for _, diagnostic in ipairs(diagnostics or {}) do
 end
 print('PASS current common.j/Blizzard.j natives and JASS optimization/obfuscation')
 
+-- Reuse the same optimizer module across cases so per-invocation state leaks
+-- are observable. Check callback routing explicitly: pjass cannot resolve
+-- dynamically constructed function names and therefore cannot prove this behavior.
+local optimizer = require 'optimizer.init'
+local function parse_script(script, label)
+    local parsed = {}
+    parser.parser(w2l:mpq_load('scripts\\common.j'), 'common.j', parsed)
+    parser.parser(w2l:mpq_load('scripts\\blizzard.j'), 'blizzard.j', parsed)
+    local script_ast, _, errors = parser.parser(script, 'war3map.j', parsed)
+    assert(script_ast, label .. ': no JASS AST')
+    for _, diagnostic in ipairs(errors or {}) do
+        assert(diagnostic.level ~= 'error', label .. ': ' .. tostring(diagnostic.err))
+    end
+    return script_ast, parsed.state
+end
+local obfuscation_cases = dofile(context.root .. '/test/compat/obfuscation_cases.lua')
+obfuscation_cases(function(script, config)
+    local script_ast, state = parse_script(script, 'optimizer input')
+    return optimizer(script_ast, state, config)
+end, parse_script)
+
 local lua = 'function main() print(GetLocalizedString("TRIGSTR_" .. "900")) end\n'
 files = { ['war3map.lua'] = lua }
 w2l, errors = converter(files)

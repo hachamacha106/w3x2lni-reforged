@@ -1,9 +1,9 @@
 {
   "product_name": "W3x2lni Reforged",
-  "version": "1.1.0",
-  "display_version": "1.1",
-  "tag": "v1.1.0",
+  "version": "1.1.5",
+  "display_version": "1.1.5",
+  "tag": "v1.1.5",
   "repository": "hachamacha106/w3x2lni-reforged",
-  "archive_root": "w3x2lni-reforged-1.1.0",
-  "asset_name": "w3x2lni-reforged-1.1.0-windows-x86.zip"
+  "archive_root": "w3x2lni-reforged-1.1.5",
+  "asset_name": "w3x2lni-reforged-1.1.5-windows-x86.zip"
 }

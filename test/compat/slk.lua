@@ -164,3 +164,127 @@ assert(parser.txt(legacy_text.unit).u000.file[3] == 'third.mdl')
 assert(parser.txt(legacy_text.item).i000.file[1] == 'item.mdl')
 
 print('PASS: SLK schema, six levels, DataT, classic overflow, skin routing, three model slots, graphics variants, and zero button coordinates')
+
+
+-- Rawcodes are exact four-byte identifiers. Only native TXT section storage
+-- folds their casing, so SLK output must keep affected values in binary data.
+local lang = require 'share.lang'
+local empty_objects = string.pack('<i4i4i4', 2, 0, 0)
+local function string_modification(field, value)
+    return string.pack('<c4i4zi4', field, 3, value, 0)
+end
+local function unit_record(id, name, hp)
+    return string.pack('<c4c4i4', 'hfoo', id, 2)
+        .. string_modification('unam', name)
+        .. string.pack('<c4i4i4i4', 'uhpm', 0, hp, 0)
+end
+local case_units = string.pack('<i4i4i4', 2, 0, 2)
+    .. unit_record('H0BC', 'Upper-case rawcode unit', 707)
+    .. unit_record('h0BC', 'Lower-case rawcode unit', 808)
+local shared_profile_buff = string.pack('<i4i4c4c4i4', 2, 1, 'Brpb', '\0\0\0\0', 1)
+    .. string_modification('ftip', 'Buff-specific Replenish') .. string.pack('<i4', 0)
+local shared_profile_item = string.pack('<i4i4i4c4c4i4', 2, 0, 1, 'ratf', 'brpb', 2)
+    .. string_modification('unam', 'Item-specific plated boots')
+    .. string_modification('utip', 'Item-specific tooltip')
+
+local function rawcode_converter(mode, dataset, input)
+    local w2l, storage, diagnostics = core(), {}, {}
+    for name, value in pairs(input) do storage[name:lower()] = value end
+    w2l:set_setting {
+        mode = mode, data = dataset, data_meta = dataset, data_wes = '${DEFAULT}',
+        version = 'Custom', read_slk = true, remove_same = true,
+        remove_unuse_object = false, optimize_jass = false,
+        remove_we_only = true, computed_text = false,
+        slk_doodad = true, extra_check = false,
+    }
+    w2l:set_messager(function(kind, ...)
+        if kind == 'report' then diagnostics[#diagnostics + 1] = {...} end
+    end)
+    function w2l:file_load(kind, name) return storage[(kind .. '/' .. name):lower()] end
+    function w2l:file_save(kind, name, value) storage[(kind .. '/' .. name):lower()] = value end
+    function w2l:file_remove(kind, name) storage[(kind .. '/' .. name):lower()] = nil end
+    return w2l, storage, diagnostics
+end
+
+local function object_records(w2l, storage, kind)
+    return w2l:frontend_obj(kind, storage[('map/' .. w2l.info.obj[kind]):lower()] or empty_objects)
+end
+local function binary_output(w2l, storage, mode, dataset)
+    if mode == 'lni' then
+        local rebuilt, files = rawcode_converter('obj', dataset, storage)
+        rebuilt:frontend()
+        rebuilt:backend()
+        return rebuilt, files
+    end
+    return w2l, storage
+end
+local function collision_diagnostic(diagnostics, key, id1, id2)
+    local template = assert(lang.report[key], 'Missing collision diagnostic: ' .. key)
+    local prefix = assert(template:match('^([^%%]+)'), 'Collision diagnostic needs a readable prefix')
+    for _, diagnostic in ipairs(diagnostics) do
+        local message = diagnostic[3] or ''
+        local detail = diagnostic[4] or ''
+        if message:sub(1, #prefix) == prefix
+            and (message .. detail):find(id1, 1, true)
+            and (message .. detail):find(id2, 1, true) then
+            assert(diagnostic[1] == lang.report.WARN and diagnostic[2] == 2,
+                'Storage-collision diagnostics must retain warning severity')
+            return true
+        end
+    end
+    return false
+end
+
+for _, dataset in ipairs {'enUS-1.27.1', 'warcraft-current'} do
+    for _, mode in ipairs {'lni', 'obj', 'slk'} do
+        local w2l, storage, diagnostics = rawcode_converter(mode, dataset, {
+            ['map/war3map.w3u'] = case_units,
+        })
+        w2l:frontend()
+        if mode == 'slk' then
+            assert(w2l.slk.unit.H0BC._keep_obj and w2l.slk.unit.h0BC._keep_obj,
+                'Both case-distinct rawcodes must use binary object fallback')
+        end
+        w2l:backend()
+        local output, files = binary_output(w2l, storage, mode, dataset)
+        local units = object_records(output, files, 'unit')
+        assert(units.H0BC and units.h0BC, 'A case-distinct rawcode was renamed or lost')
+        assert(units.H0BC.unam[1] == 'Upper-case rawcode unit' and units.H0BC.uhpm[1] == 707)
+        assert(units.h0BC.unam[1] == 'Lower-case rawcode unit' and units.h0BC.uhpm[1] == 808)
+        local warned = collision_diagnostic(diagnostics, 'CASE_ONLY_ID_COLLISION', 'H0BC', 'h0BC')
+        assert(warned == (mode == 'slk'), 'Case-storage diagnostic must apply only to SLK output')
+        if mode == 'slk' then
+            for _, filename in ipairs(w2l.info.slk.unit) do
+                local rows = parser.slk(storage[('map/' .. filename):lower()])
+                assert(not rows.H0BC and not rows.h0BC, 'Case-distinct binary objects leaked into SLK')
+            end
+            local txt = parser.txt(storage[('map/' .. w2l.info.txt_out.unit):lower()])
+            assert(not txt.h0bc, 'Case-distinct binary objects leaked into a shared TXT section')
+        end
+
+        local shared, shared_files, shared_diagnostics = rawcode_converter(mode, dataset, {
+            ['map/war3map.w3h'] = shared_profile_buff,
+            ['map/war3map.w3t'] = shared_profile_item,
+        })
+        shared:frontend()
+        shared:backend()
+        local rebuilt, rebuilt_files = binary_output(shared, shared_files, mode, dataset)
+        local items = object_records(rebuilt, rebuilt_files, 'item')
+        local buffs = object_records(rebuilt, rebuilt_files, 'buff')
+        assert(items.brpb and items.brpb.unam[1] == 'Item-specific plated boots',
+            'Shared profile key must preserve the exact item ID and binary name')
+        assert(items.brpb.utip[1] == 'Item-specific tooltip', 'Shared profile key lost the item tooltip')
+        if mode == 'slk' then
+            local txt = parser.txt(shared_files[('map/' .. shared.info.txt_out.buff):lower()])
+            assert(txt.brpb and txt.brpb.bufftip[1] == 'Buff-specific Replenish',
+                'Shared profile key lost the distinct buff tooltip')
+        else
+            assert(buffs.Brpb and buffs.Brpb.ftip[1] == 'Buff-specific Replenish',
+                'Shared profile key lost the exact buff ID or its distinct tooltip')
+        end
+        local shared_warned = collision_diagnostic(shared_diagnostics,
+            'TXT_PROFILE_ID_COLLISION', 'Brpb', 'brpb')
+        assert(shared_warned == (mode == 'slk'), 'Shared-profile diagnostic must apply only to SLK output')
+        print(('PASS rawcode storage: %s %s preserves case-distinct units and buff/item values'):format(dataset, mode))
+    end
+end

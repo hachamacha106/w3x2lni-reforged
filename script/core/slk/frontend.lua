@@ -209,7 +209,7 @@ local function mark_keep_obj_after_merge(type, objs)
             objs[used[lid]]._keep_obj = true
             local _, _, name1 = w2l:get_displayname(obj)
             local _, _, name2 = w2l:get_displayname(objs[used[lid]])
-            w2l.messager.report(lang.report.WARN, 2, (lang.report.OBJECT_ID_CONFLICT):format(id), ('`%s`[%s] --> `%s`[%s]'):format(id, name1, used[lid], name2))
+            w2l.messager.report(lang.report.WARN, 2, (lang.report.CASE_ONLY_ID_COLLISION):format(id), ('`%s`[%s] --> `%s`[%s]'):format(id, name1, used[lid], name2))
         else
             used[lid] = id
         end

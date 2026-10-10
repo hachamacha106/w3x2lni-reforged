@@ -197,6 +197,40 @@ if action == 'pjass' then
     local script = assert(fixture:load_file('war3map.j'))
     assert(fixture:close())
     verify_case('current-fixture', 'warcraft-current', script, 'JASS', 'Passed')
+    -- Keep the ten machine-readable checker cases above stable. These extra
+    -- regressions are mandatory assertions in this same native test process.
+    local obfuscation_cases = dofile(root .. '/test/compat/obfuscation_cases.lua')
+    for _, dataset in ipairs {'warcraft-current', 'enUS-1.27.1', 'zhCN-1.24.4'} do
+        -- Reuse one sandbox so adjacent cases detect optimizer state leaks.
+        local conversion = factory()
+        obfuscation_cases(function(input, setting)
+            local candidate = {['war3map.j'] = input}
+            local errors = {}
+            conversion:set_messager {report = function(_, level, text, detail)
+                if level == 1 then errors[#errors + 1] = tostring(text) .. tostring(detail) end
+            end}
+            conversion:set_setting {mode = 'slk', data = dataset, data_meta = '${DATA}',
+                data_ui = '${DATA}', data_wes = '${DATA}', optimize_jass = true,
+                confused = setting.confused, confusion = setting.confusion}
+            conversion.input_ar = {}
+            function conversion:file_load(_, name) return candidate[name:lower()] end
+            function conversion:file_save(_, name, bytes) candidate[name:lower()] = bytes end
+            conversion:backend_optimizejass()
+            assert(#errors == 0, dataset .. ': ' .. table.concat(errors, '\n'))
+            return candidate['war3map.j']
+        end, function(input, label)
+            local w2l = factory()
+            w2l:set_setting {mode = 'obj', data = dataset, data_meta = '${DATA}',
+                data_ui = '${DATA}', data_wes = '${DATA}'}
+            local checked = checker.verify(w2l, function(member)
+                if member == 'war3map.j' then return input end
+            end, label, {script_type = 'JASS'})
+            assert(checked.status == 'Passed', dataset .. ' ' .. label .. ': '
+                .. checked.raw_output .. table.concat(checked.diagnostics, '\n'))
+            assert(checked.target.exit_code == 0 and checked.target.ignored_errors == 0)
+        end)
+        print('PASS packaged JASS obfuscation regressions: ' .. dataset)
+    end
     print('PASS packaged pjass: current/legacy datasets, syntax/type failures, ignored errors and Lua skip')
     return
 end

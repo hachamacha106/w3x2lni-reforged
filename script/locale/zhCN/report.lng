@@ -62,8 +62,12 @@
 文本内容同时包含了逗号和双引号
 [OBJECT_ID_CONFLICT]
 对象的ID冲突[%s]
+[CASE_ONLY_ID_COLLISION]
+SLK/TXT中的ID仅大小写不同[%s]；保留的对象使用二进制对象数据，ID不变
+[TXT_PROFILE_ID_COLLISION]
+不同类型的对象共用SLK/TXT配置ID[%s]
 [TXT_CONFLICT]
-文本内容和另一个对象冲突
+TXT字段冲突；此字段保留在二进制对象数据中
 [NO_CONVERT_WTG]
 没有转换触发器
 [SIMPLIFIED_OBJECT]

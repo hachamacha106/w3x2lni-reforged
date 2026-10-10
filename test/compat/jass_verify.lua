@@ -258,6 +258,32 @@ else
     assert(result.status == 'Passed', result.raw_output)
     assert(files['war3map.j'] == original)
     print('PASS real pjass current/legacy declarations, syntax/type errors, suppressed diagnostics and transformed WTS script')
+
+    -- Exercise real backend transformations of the same minimal regressions.
+    -- These check parsing with the pinned helper in addition to explicit dynamic
+    -- callback assertions; checker success alone does not prove ExecuteFunc routing.
+    local obfuscation_cases = dofile(context.root .. '/test/compat/obfuscation_cases.lua')
+    obfuscation_cases(function(script, setting)
+        local candidate = {['war3map.j'] = script}
+        local conversion = context.core()()
+        local errors = {}
+        conversion:set_messager {report = function(_, level, text, detail)
+            if level == 1 then errors[#errors + 1] = tostring(text) .. tostring(detail) end
+        end}
+        conversion:set_setting {mode = 'slk', data = 'warcraft-current', optimize_jass = true,
+            confused = setting.confused, confusion = setting.confusion}
+        conversion.input_ar = {}
+        function conversion:file_load(_, name) return candidate[name:lower()] end
+        function conversion:file_save(_, name, bytes) candidate[name:lower()] = bytes end
+        function conversion:mpq_load(name) return w2l:mpq_load(name) end
+        conversion:backend_optimizejass()
+        assert(#errors == 0, table.concat(errors, '\n'))
+        return candidate['war3map.j']
+    end, function(script, label)
+        local checked = real('warcraft-current', script)
+        assert(checked.status == 'Passed', label .. ': ' .. checked.raw_output ..
+            table.concat(checked.diagnostics, '\n'))
+    end)
 end
 
 -- Exercise the actual conversion orchestration without native archive writes.
